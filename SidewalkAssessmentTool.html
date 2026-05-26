@@ -267,6 +267,10 @@
       background: #fef3f2;
     }
 
+    .upload-settings {
+      display: none;
+    }
+
     @media (max-width: 900px) {
       header {
         align-items: flex-start;
@@ -424,7 +428,7 @@
         </div>
       </form>
 
-      <details>
+      <details class="upload-settings">
         <summary>Spreadsheet upload</summary>
         <p class="help">
           Paste a Google Apps Script Web App URL or Power Automate HTTP URL that accepts report submissions.
@@ -440,7 +444,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-05-26-photo-v3";
+    const APP_VERSION = "2026-05-26-photo-v4";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
 
@@ -454,6 +458,7 @@
     window.addEventListener("load", initApp);
 
     function initApp() {
+      resetSavedReportsFromUrl();
       bindForm();
       bindSettings();
       updateSavedCount();
@@ -814,6 +819,13 @@
 
     function updateSavedCount() {
       field("savedCount").textContent = String(getReports().length);
+    }
+
+    function resetSavedReportsFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("reset") === "savedReports") {
+        localStorage.removeItem(STORAGE_KEY);
+      }
     }
 
     function getUploadUrl() {
