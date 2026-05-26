@@ -424,13 +424,13 @@
       </form>
 
       <details>
-        <summary>Microsoft 365 spreadsheet upload</summary>
+        <summary>Spreadsheet upload</summary>
         <p class="help">
-          Paste a Power Automate HTTP trigger URL that adds rows to an Excel table in OneDrive or SharePoint.
+          Paste a Google Apps Script Web App URL or Power Automate HTTP URL that accepts report submissions.
           Reports are still saved in this browser and can be exported as CSV if the upload URL is blank or offline.
         </p>
-        <label for="uploadUrl">Power Automate HTTP URL</label>
-        <input id="uploadUrl" type="url" placeholder="https://prod-...logic.azure.com/...">
+        <label for="uploadUrl">Upload Endpoint URL</label>
+        <input id="uploadUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec">
         <button type="button" id="saveSettingsButton">Save Upload Settings</button>
       </details>
     </section>
@@ -628,7 +628,7 @@
         if (uploaded) {
           setMessage("Report saved and uploaded to the Microsoft 365 spreadsheet.", "ok");
         } else {
-          setMessage("Report saved in this browser. Add the Power Automate URL to upload to Excel.", "ok");
+          setMessage("Report saved in this browser. Add the Google Apps Script or Power Automate URL to upload to a spreadsheet.", "ok");
         }
 
         field("surveyForm").reset();
