@@ -625,8 +625,10 @@
         const uploaded = await uploadReport(report);
         updateSavedCount();
 
-        if (uploaded) {
-          setMessage("Report saved and uploaded to the Microsoft 365 spreadsheet.", "ok");
+        if (uploaded === "sent") {
+          setMessage("Report saved locally and sent to the spreadsheet endpoint. Check the sheet to confirm it arrived.", "ok");
+        } else if (uploaded) {
+          setMessage("Report saved and uploaded.", "ok");
         } else {
           setMessage("Report saved in this browser. Add the Google Apps Script or Power Automate URL to upload to a spreadsheet.", "ok");
         }
@@ -730,7 +732,7 @@
           headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify(report)
         });
-        return true;
+        return "sent";
       }
 
       try {
