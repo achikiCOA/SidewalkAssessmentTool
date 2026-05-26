@@ -669,9 +669,46 @@
 
     function fileToDataUrl(file) {
       return new Promise((resolve, reject) => {
+        if (file.type && file.type.indexOf("image/") === 0) {
+          resizePhoto(file).then(resolve).catch(() => readOriginalFile(file, resolve, reject));
+          return;
+        }
+
+        readOriginalFile(file, resolve, reject);
+      });
+    }
+
+    function readOriginalFile(file, resolve, reject) {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
         reader.onerror = () => reject(new Error("Photo could not be read."));
+        reader.readAsDataURL(file);
+    }
+
+    function resizePhoto(file) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        const reader = new FileReader();
+
+        reader.onload = () => {
+          image.onload = () => {
+            const maxSize = 1600;
+            const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+            const width = Math.max(1, Math.round(image.width * scale));
+            const height = Math.max(1, Math.round(image.height * scale));
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+
+            canvas.width = width;
+            canvas.height = height;
+            context.drawImage(image, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", 0.82));
+          };
+          image.onerror = reject;
+          image.src = reader.result;
+        };
+
+        reader.onerror = reject;
         reader.readAsDataURL(file);
       });
     }
@@ -679,6 +716,16 @@
     async function uploadReport(report) {
       const uploadUrl = localStorage.getItem(UPLOAD_URL_KEY) || DEFAULT_UPLOAD_URL;
       if (!uploadUrl) return false;
+
+      if (uploadUrl.indexOf("script.google.com") !== -1) {
+        await fetch(uploadUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(report)
+        });
+        return true;
+      }
 
       try {
         const response = await fetch(uploadUrl, {
