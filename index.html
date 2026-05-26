@@ -764,6 +764,8 @@
         form.method = "POST";
         form.action = uploadUrl;
         form.target = frameName;
+        form.enctype = "application/x-www-form-urlencoded";
+        form.acceptCharset = "UTF-8";
         form.style.display = "none";
 
         input.type = "hidden";
