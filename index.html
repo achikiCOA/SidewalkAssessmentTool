@@ -414,6 +414,7 @@
           <div class="full">
             <label for="photo">Photo</label>
             <input type="file" id="photo" name="photo" accept="image/*" capture="environment">
+            <p class="help" id="photoStatus">No photo selected.</p>
           </div>
         </div>
 
@@ -439,7 +440,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-05-26-photo-v2";
+    const APP_VERSION = "2026-05-26-photo-v3";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
 
@@ -599,6 +600,7 @@
     function bindForm() {
       field("condition").addEventListener("change", runScoring);
       field("severity").addEventListener("change", runScoring);
+      field("photo").addEventListener("change", updatePhotoStatus);
       field("downloadButton").addEventListener("click", downloadCsv);
 
       field("surveyForm").addEventListener("submit", async (e) => {
@@ -665,10 +667,22 @@
         comments: field("comments").value.trim(),
         photoName: photo ? photo.name : "",
         photoType: photoType,
+        photoSize: photo ? photo.size : 0,
         photoData: photoData,
         score: score,
         conditionClass: getClass(score)
       };
+    }
+
+    function updatePhotoStatus() {
+      const photo = field("photo").files[0] || null;
+      if (!photo) {
+        field("photoStatus").textContent = "No photo selected.";
+        return;
+      }
+
+      const sizeKb = Math.max(1, Math.round(photo.size / 1024));
+      field("photoStatus").textContent = "Selected: " + photo.name + " (" + sizeKb + " KB)";
     }
 
     function getDataUrlType(dataUrl) {
@@ -756,7 +770,8 @@
     async function uploadGoogleReport(uploadUrl, report) {
       const metadata = Object.assign({}, report, {
         action: "report",
-        hasPhoto: Boolean(report.photoData),
+        hasPhoto: Boolean(report.photoName || report.photoData),
+        photoDataLength: report.photoData ? report.photoData.length : 0,
         photoData: ""
       });
 
