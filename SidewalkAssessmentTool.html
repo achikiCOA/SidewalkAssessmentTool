@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sidewalk Assessment Tool</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root {
+      --bg: #eef2f7;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #5f6b7a;
+      --line: #d7dee8;
+      --accent: #0f766e;
+      --accent-dark: #0b5e58;
+      --danger: #b42318;
+      --ok: #16703f;
+      --shadow: 0 12px 30px rgba(20, 32, 52, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 500;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      color: #fff;
+      background: #172033;
+      box-shadow: 0 2px 14px rgba(0, 0, 0, 0.22);
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: clamp(1.1rem, 3vw, 1.45rem);
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    .status-pill {
+      flex: 0 0 auto;
+      max-width: 46vw;
+      padding: 7px 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      color: #d8fff8;
+      background: rgba(15, 118, 110, 0.28);
+      font-size: 0.82rem;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+      gap: 16px;
+      width: min(1420px, 100%);
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    .panel {
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-header h2 {
+      margin: 0;
+      font-size: 1rem;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .map-panel {
+      display: grid;
+      grid-template-rows: auto minmax(420px, 1fr) auto;
+      min-height: calc(100vh - 96px);
+    }
+
+    #map {
+      width: 100%;
+      min-height: 420px;
+      background: #dce5ee;
+    }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      background: #f8fafc;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 1rem;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+
+    form {
+      padding: 14px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+      color: #344054;
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 11px;
+      border: 1px solid #c9d2df;
+      border-radius: 6px;
+      color: var(--ink);
+      background: #fff;
+      font: inherit;
+    }
+
+    textarea {
+      min-height: 94px;
+      resize: vertical;
+    }
+
+    input[readonly] {
+      background: #f5f7fa;
+      color: #475467;
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    button {
+      min-height: 46px;
+      padding: 11px 12px;
+      border: 0;
+      border-radius: 6px;
+      color: #fff;
+      background: var(--accent);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: var(--accent-dark);
+    }
+
+    button.secondary {
+      color: var(--ink);
+      background: #e7edf4;
+    }
+
+    button.secondary:hover {
+      background: #dbe4ee;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.68;
+    }
+
+    details {
+      margin: 0 14px 14px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .help {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.45;
+    }
+
+    .message {
+      margin: 12px 14px 0;
+      padding: 10px 12px;
+      border-radius: 8px;
+      color: #344054;
+      background: #f4f6f8;
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+
+    .message.ok {
+      color: var(--ok);
+      background: #ecfdf3;
+    }
+
+    .message.error {
+      color: var(--danger);
+      background: #fef3f2;
+    }
+
+    @media (max-width: 900px) {
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .status-pill {
+        max-width: 100%;
+      }
+
+      main {
+        grid-template-columns: 1fr;
+        padding: 10px;
+      }
+
+      .map-panel {
+        min-height: auto;
+      }
+
+      #map {
+        min-height: 58vh;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .form-grid,
+      .button-row,
+      .score-grid {
+        grid-template-columns: 1fr;
+      }
+
+      header {
+        padding: 12px;
+      }
+
+      main {
+        gap: 10px;
+      }
+
+      .panel-header,
+      form {
+        padding: 12px;
+      }
+
+      details,
+      .message {
+        margin-right: 12px;
+        margin-left: 12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>Sidewalk Assessment Tool</h1>
+    <div class="status-pill" id="uploadStatus">Spreadsheet upload not configured</div>
+  </header>
+
+  <main>
+    <section class="panel map-panel" aria-labelledby="mapTitle">
+      <div class="panel-header">
+        <h2 id="mapTitle">Map</h2>
+        <button class="secondary" type="button" id="locateButton">Use My Location</button>
+      </div>
+      <div id="map" aria-label="Sidewalk assessment map"></div>
+      <div class="score-grid" aria-live="polite">
+        <div class="metric">
+          <span>GIS Score</span>
+          <strong id="scoreValue">--</strong>
+        </div>
+        <div class="metric">
+          <span>Condition Class</span>
+          <strong id="scoreClass">--</strong>
+        </div>
+        <div class="metric">
+          <span>Saved Reports</span>
+          <strong id="savedCount">0</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="surveyTitle">
+      <div class="panel-header">
+        <h2 id="surveyTitle">Survey</h2>
+      </div>
+
+      <div class="message" id="formMessage">Tap the map or drag the marker to set the report location.</div>
+
+      <form id="surveyForm">
+        <div class="form-grid">
+          <div>
+            <label for="reporterName">Name</label>
+            <input id="reporterName" name="reporterName" type="text" autocomplete="name">
+          </div>
+
+          <div>
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email">
+          </div>
+
+          <div>
+            <label for="latitude">Latitude</label>
+            <input id="latitude" name="latitude" readonly>
+          </div>
+
+          <div>
+            <label for="longitude">Longitude</label>
+            <input id="longitude" name="longitude" readonly>
+          </div>
+
+          <div class="full">
+            <label for="address">Address</label>
+            <input id="address" name="address" readonly>
+          </div>
+
+          <div>
+            <label for="condition">Issue Type</label>
+            <select id="condition" name="condition">
+              <option>No Issues</option>
+              <option>Cracking</option>
+              <option>Heaving</option>
+              <option>Gaps</option>
+              <option>Spalling</option>
+              <option>Obstruction</option>
+              <option>Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="severity">Severity</label>
+            <select id="severity" name="severity">
+              <option value="1">1 - Good</option>
+              <option value="2">2 - Fair</option>
+              <option value="3">3 - Poor</option>
+              <option value="4">4 - Missing</option>
+            </select>
+          </div>
+
+          <div class="full">
+            <label for="comments">Comments</label>
+            <textarea id="comments" name="comments"></textarea>
+          </div>
+
+          <div class="full">
+            <label for="photo">Photo</label>
+            <input type="file" id="photo" name="photo" accept="image/*" capture="environment">
+          </div>
+        </div>
+
+        <div class="button-row">
+          <button type="submit" id="submitButton">Submit Report</button>
+          <button class="secondary" type="button" id="downloadButton">Download CSV</button>
+        </div>
+      </form>
+
+      <details>
+        <summary>Microsoft 365 spreadsheet upload</summary>
+        <p class="help">
+          Paste a Power Automate HTTP trigger URL that adds rows to an Excel table in OneDrive or SharePoint.
+          Reports are still saved in this browser and can be exported as CSV if the upload URL is blank or offline.
+        </p>
+        <label for="uploadUrl">Power Automate HTTP URL</label>
+        <input id="uploadUrl" type="url" placeholder="https://prod-...logic.azure.com/...">
+        <button type="button" id="saveSettingsButton">Save Upload Settings</button>
+      </details>
+    </section>
+  </main>
+
+  <script>
+    const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
+    const DEFAULT_UPLOAD_URL = "";
+    const STORAGE_KEY = "sidewalkAssessmentReports";
+    const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
+
+    let map = null;
+    let marker = null;
+    let resizeObserver = null;
+    let addressTimer = null;
+
+    const field = (id) => document.getElementById(id);
+
+    window.addEventListener("load", initApp);
+
+    function initApp() {
+      bindForm();
+      bindSettings();
+      updateSavedCount();
+      updateUploadStatus();
+      runScoring();
+
+      if (!window.L) {
+        setMessage("Map library did not load. Check your internet connection and reload this file.", "error");
+        return;
+      }
+
+      initMap(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lng);
+    }
+
+    function initMap(lat, lng) {
+      map = L.map("map", {
+        tap: true,
+        zoomControl: true
+      }).setView([lat, lng], 16);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 20
+      }).addTo(map);
+
+      marker = L.marker([lat, lng], {
+        draggable: true,
+        autoPan: true
+      }).addTo(map);
+
+      map.on("click", (e) => setLocation(e.latlng.lat, e.latlng.lng, true));
+      marker.on("dragend", () => {
+        const point = marker.getLatLng();
+        setLocation(point.lat, point.lng, true);
+      });
+
+      field("locateButton").addEventListener("click", locateUser);
+      attachResizeObserver(field("map"));
+      setLocation(lat, lng, false);
+
+      setTimeout(() => map.invalidateSize(true), 100);
+      setTimeout(() => map.invalidateSize(true), 500);
+    }
+
+    function attachResizeObserver(el) {
+      if (!("ResizeObserver" in window)) return;
+      if (resizeObserver) resizeObserver.disconnect();
+
+      resizeObserver = new ResizeObserver(() => {
+        if (map) map.invalidateSize(true);
+      });
+      resizeObserver.observe(el);
+    }
+
+    function locateUser() {
+      if (!navigator.geolocation) {
+        setMessage("This browser does not support location lookup.", "error");
+        return;
+      }
+
+      field("locateButton").disabled = true;
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          setLocation(lat, lng, true);
+          map.setView([lat, lng], 18);
+          field("locateButton").disabled = false;
+        },
+        () => {
+          setMessage("Location access was not available. You can still tap the map to place the marker.", "error");
+          field("locateButton").disabled = false;
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+      );
+    }
+
+    function setLocation(lat, lng, lookupAddress) {
+      const cleanLat = Number(lat);
+      const cleanLng = Number(lng);
+
+      field("latitude").value = cleanLat.toFixed(7);
+      field("longitude").value = cleanLng.toFixed(7);
+
+      if (marker) marker.setLatLng([cleanLat, cleanLng]);
+
+      if (lookupAddress) {
+        field("address").value = "Looking up address...";
+        clearTimeout(addressTimer);
+        addressTimer = setTimeout(() => reverseGeocode(cleanLat, cleanLng), 350);
+      }
+    }
+
+    async function reverseGeocode(lat, lng) {
+      const url = "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=" +
+        encodeURIComponent(lat) + "&lon=" + encodeURIComponent(lng);
+
+      try {
+        const response = await fetch(url, {
+          headers: { "Accept": "application/json" }
+        });
+        if (!response.ok) throw new Error("Address lookup failed");
+        const result = await response.json();
+        field("address").value = result.display_name || "";
+      } catch (error) {
+        field("address").value = "";
+        setMessage("Address lookup is unavailable right now. Coordinates were captured.", "error");
+      }
+    }
+
+    function calculateScore() {
+      const conditionPenalty = {
+        "No Issues": 0,
+        "Cracking": 25,
+        "Heaving": 35,
+        "Gaps": 40,
+        "Spalling": 20,
+        "Obstruction": 30,
+        "Other": 15
+      };
+
+      const condition = field("condition").value;
+      const severity = Number(field("severity").value);
+      const severityPenalty = Math.max(0, severity - 1) * 8;
+      const score = 100 - (conditionPenalty[condition] || 0) - severityPenalty;
+
+      return Math.max(0, Math.min(100, score));
+    }
+
+    function getClass(score) {
+      if (score >= 85) return "Excellent";
+      if (score >= 70) return "Good";
+      if (score >= 50) return "Fair";
+      if (score >= 25) return "Poor";
+      return "Failed";
+    }
+
+    function runScoring() {
+      const score = calculateScore();
+      field("scoreValue").textContent = score + " / 100";
+      field("scoreClass").textContent = getClass(score);
+    }
+
+    function bindForm() {
+      field("condition").addEventListener("change", runScoring);
+      field("severity").addEventListener("change", runScoring);
+      field("downloadButton").addEventListener("click", downloadCsv);
+
+      field("surveyForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        await submitReport();
+      });
+    }
+
+    function bindSettings() {
+      field("uploadUrl").value = localStorage.getItem(UPLOAD_URL_KEY) || DEFAULT_UPLOAD_URL;
+      field("saveSettingsButton").addEventListener("click", () => {
+        localStorage.setItem(UPLOAD_URL_KEY, field("uploadUrl").value.trim());
+        updateUploadStatus();
+        setMessage("Upload settings saved.", "ok");
+      });
+    }
+
+    async function submitReport() {
+      field("submitButton").disabled = true;
+
+      try {
+        const report = await buildReport();
+        saveReport(report);
+
+        const uploaded = await uploadReport(report);
+        updateSavedCount();
+
+        if (uploaded) {
+          setMessage("Report saved and uploaded to the Microsoft 365 spreadsheet.", "ok");
+        } else {
+          setMessage("Report saved in this browser. Add the Power Automate URL to upload to Excel.", "ok");
+        }
+
+        field("surveyForm").reset();
+        field("condition").value = "No Issues";
+        field("severity").value = "1";
+        setLocation(Number(report.latitude), Number(report.longitude), false);
+        runScoring();
+      } catch (error) {
+        setMessage(error.message || "The report could not be submitted.", "error");
+      } finally {
+        field("submitButton").disabled = false;
+      }
+    }
+
+    async function buildReport() {
+      const score = calculateScore();
+      const photo = field("photo").files[0] || null;
+      const photoData = photo ? await fileToDataUrl(photo) : "";
+
+      return {
+        reportId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        submittedAt: new Date().toISOString(),
+        reporterName: field("reporterName").value.trim(),
+        email: field("email").value.trim(),
+        latitude: field("latitude").value,
+        longitude: field("longitude").value,
+        address: field("address").value,
+        condition: field("condition").value,
+        severity: field("severity").value,
+        comments: field("comments").value.trim(),
+        photoName: photo ? photo.name : "",
+        photoType: photo ? photo.type : "",
+        photoData: photoData,
+        score: score,
+        conditionClass: getClass(score)
+      };
+    }
+
+    function fileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Photo could not be read."));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function uploadReport(report) {
+      const uploadUrl = localStorage.getItem(UPLOAD_URL_KEY) || DEFAULT_UPLOAD_URL;
+      if (!uploadUrl) return false;
+
+      try {
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(report)
+        });
+
+        if (!response.ok) {
+          throw new Error("Spreadsheet upload failed.");
+        }
+      } catch (error) {
+        await fetch(uploadUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(report)
+        });
+      }
+
+      return true;
+    }
+
+    function getReports() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function saveReport(report) {
+      const reports = getReports();
+      reports.push(report);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+    }
+
+    function updateSavedCount() {
+      field("savedCount").textContent = String(getReports().length);
+    }
+
+    function updateUploadStatus() {
+      const hasUrl = Boolean(localStorage.getItem(UPLOAD_URL_KEY) || DEFAULT_UPLOAD_URL);
+      field("uploadStatus").textContent = hasUrl ? "Spreadsheet upload configured" : "Spreadsheet upload not configured";
+    }
+
+    function setMessage(text, type) {
+      const message = field("formMessage");
+      message.textContent = text;
+      message.className = "message" + (type ? " " + type : "");
+    }
+
+    function downloadCsv() {
+      const reports = getReports();
+      if (!reports.length) {
+        setMessage("No saved reports are available to download.", "error");
+        return;
+      }
+
+      const columns = [
+        "reportId", "submittedAt", "reporterName", "email", "latitude", "longitude",
+        "address", "condition", "severity", "comments", "photoName", "photoType",
+        "score", "conditionClass"
+      ];
+
+      const rows = [columns.join(",")].concat(reports.map((report) => {
+        return columns.map((column) => csvValue(report[column])).join(",");
+      }));
+
+      const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "sidewalk-assessment-reports.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function csvValue(value) {
+      const text = String(value || "");
+      return "\"" + text.replace(/"/g, "\"\"") + "\"";
+    }
+  </script>
+</body>
+
+</html>
