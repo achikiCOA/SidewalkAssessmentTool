@@ -726,12 +726,7 @@
       if (!uploadUrl) return false;
 
       if (uploadUrl.indexOf("script.google.com") !== -1) {
-        await fetch(uploadUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(report)
-        });
+        await uploadGoogleReport(uploadUrl, report);
         return "sent";
       }
 
@@ -755,6 +750,35 @@
       }
 
       return true;
+    }
+
+    async function uploadGoogleReport(uploadUrl, report) {
+      const metadata = Object.assign({}, report, {
+        action: "report",
+        hasPhoto: Boolean(report.photoData),
+        photoData: ""
+      });
+
+      await postJsonNoCors(uploadUrl, metadata);
+
+      if (report.photoData) {
+        await postJsonNoCors(uploadUrl, {
+          action: "photo",
+          reportId: report.reportId,
+          photoName: report.photoName,
+          photoType: report.photoType,
+          photoData: report.photoData
+        });
+      }
+    }
+
+    function postJsonNoCors(uploadUrl, data) {
+      return fetch(uploadUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(data)
+      });
     }
 
 
