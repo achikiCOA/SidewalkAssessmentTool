@@ -724,7 +724,12 @@
       if (!uploadUrl) return false;
 
       if (uploadUrl.indexOf("script.google.com") !== -1) {
-        await postToGoogleAppsScript(uploadUrl, report);
+        await fetch(uploadUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(report)
+        });
         return true;
       }
 
@@ -750,51 +755,6 @@
       return true;
     }
 
-    function postToGoogleAppsScript(uploadUrl, report) {
-      return new Promise((resolve, reject) => {
-        const frameName = "uploadFrame-" + Date.now();
-        const iframe = document.createElement("iframe");
-        const form = document.createElement("form");
-        const input = document.createElement("input");
-        const timer = window.setTimeout(cleanupAndResolve, 12000);
-
-        iframe.name = frameName;
-        iframe.style.display = "none";
-
-        form.method = "POST";
-        form.action = uploadUrl;
-        form.target = frameName;
-        form.enctype = "application/x-www-form-urlencoded";
-        form.acceptCharset = "UTF-8";
-        form.style.display = "none";
-
-        input.type = "hidden";
-        input.name = "payload";
-        input.value = JSON.stringify(report);
-
-        iframe.addEventListener("load", cleanupAndResolve);
-        form.addEventListener("error", () => {
-          cleanup();
-          reject(new Error("Google Apps Script upload failed."));
-        });
-
-        form.appendChild(input);
-        document.body.appendChild(iframe);
-        document.body.appendChild(form);
-        form.submit();
-
-        function cleanupAndResolve() {
-          cleanup();
-          resolve();
-        }
-
-        function cleanup() {
-          window.clearTimeout(timer);
-          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-          if (form.parentNode) form.parentNode.removeChild(form);
-        }
-      });
-    }
 
     function getReports() {
       try {
