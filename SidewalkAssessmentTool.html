@@ -608,7 +608,7 @@
     }
 
     function bindSettings() {
-      field("uploadUrl").value = localStorage.getItem(UPLOAD_URL_KEY) || DEFAULT_UPLOAD_URL;
+      field("uploadUrl").value = getUploadUrl();
       field("saveSettingsButton").addEventListener("click", () => {
         localStorage.setItem(UPLOAD_URL_KEY, field("uploadUrl").value.trim());
         updateUploadStatus();
@@ -723,7 +723,7 @@
     }
 
     async function uploadReport(report) {
-      const uploadUrl = localStorage.getItem(UPLOAD_URL_KEY) || DEFAULT_UPLOAD_URL;
+      const uploadUrl = getUploadUrl();
       if (!uploadUrl) return false;
 
       if (uploadUrl.indexOf("script.google.com") !== -1) {
@@ -801,8 +801,12 @@
       field("savedCount").textContent = String(getReports().length);
     }
 
+    function getUploadUrl() {
+      return DEFAULT_UPLOAD_URL || localStorage.getItem(UPLOAD_URL_KEY) || "";
+    }
+
     function updateUploadStatus() {
-      const hasUrl = Boolean(localStorage.getItem(UPLOAD_URL_KEY) || DEFAULT_UPLOAD_URL);
+      const hasUrl = Boolean(getUploadUrl());
       const uploadText = hasUrl ? "Spreadsheet upload configured" : "Spreadsheet upload not configured";
       field("uploadStatus").textContent = uploadText + " · " + APP_VERSION;
     }
