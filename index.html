@@ -116,7 +116,7 @@
 
     .score-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 10px;
       padding: 12px;
       border-top: 1px solid var(--line);
@@ -350,6 +350,10 @@
           <span>Saved Reports</span>
           <strong id="savedCount">0</strong>
         </div>
+        <div class="metric">
+          <span>GPS Accuracy</span>
+          <strong id="accuracyValue">--</strong>
+        </div>
       </div>
     </section>
 
@@ -444,14 +448,17 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-05-26-photo-v4";
+    const APP_VERSION = "2026-05-27-gps-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
 
     let map = null;
     let marker = null;
+    let accuracyCircle = null;
     let resizeObserver = null;
     let addressTimer = null;
+    let locationWatchId = null;
+    let currentAccuracy = null;
 
     const field = (id) => document.getElementById(id);
 
@@ -489,15 +496,15 @@
         autoPan: true
       }).addTo(map);
 
-      map.on("click", (e) => setLocation(e.latlng.lat, e.latlng.lng, true));
+      map.on("click", (e) => setLocation(e.latlng.lat, e.latlng.lng, true, null));
       marker.on("dragend", () => {
         const point = marker.getLatLng();
-        setLocation(point.lat, point.lng, true);
+        setLocation(point.lat, point.lng, true, null);
       });
 
       field("locateButton").addEventListener("click", locateUser);
       attachResizeObserver(field("map"));
-      setLocation(lat, lng, false);
+      setLocation(lat, lng, false, null);
 
       setTimeout(() => map.invalidateSize(true), 100);
       setTimeout(() => map.invalidateSize(true), 500);
@@ -520,23 +527,62 @@
       }
 
       field("locateButton").disabled = true;
-      navigator.geolocation.getCurrentPosition(
+      setMessage("Getting a high-accuracy GPS fix. This may take a few seconds.", "");
+
+      if (locationWatchId !== null) {
+        navigator.geolocation.clearWatch(locationWatchId);
+        locationWatchId = null;
+      }
+
+      let bestPosition = null;
+      const startedAt = Date.now();
+      const stopTimer = window.setTimeout(stopWatchingLocation, 22000);
+
+      locationWatchId = navigator.geolocation.watchPosition(
         (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          setLocation(lat, lng, true);
-          map.setView([lat, lng], 18);
-          field("locateButton").disabled = false;
+          const accuracy = Number(position.coords.accuracy);
+          const isBetter = !bestPosition || accuracy < Number(bestPosition.coords.accuracy);
+
+          if (isBetter) {
+            bestPosition = position;
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            setLocation(lat, lng, false, accuracy);
+            map.setView([lat, lng], accuracy <= 20 ? 19 : 18);
+            setMessage("GPS fix found. Accuracy: about " + Math.round(accuracy) + " m.", "ok");
+          }
+
+          if (accuracy <= 10 || Date.now() - startedAt > 16000) {
+            stopWatchingLocation();
+          }
         },
         () => {
+          window.clearTimeout(stopTimer);
+          stopWatchingLocation();
           setMessage("Location access was not available. You can still tap the map to place the marker.", "error");
-          field("locateButton").disabled = false;
         },
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+        { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
       );
+
+      function stopWatchingLocation() {
+        window.clearTimeout(stopTimer);
+
+        if (locationWatchId !== null) {
+          navigator.geolocation.clearWatch(locationWatchId);
+          locationWatchId = null;
+        }
+
+        field("locateButton").disabled = false;
+
+        if (bestPosition) {
+          const lat = bestPosition.coords.latitude;
+          const lng = bestPosition.coords.longitude;
+          setLocation(lat, lng, true, bestPosition.coords.accuracy);
+        }
+      }
     }
 
-    function setLocation(lat, lng, lookupAddress) {
+    function setLocation(lat, lng, lookupAddress, accuracyMeters) {
       const cleanLat = Number(lat);
       const cleanLng = Number(lng);
 
@@ -544,11 +590,35 @@
       field("longitude").value = cleanLng.toFixed(7);
 
       if (marker) marker.setLatLng([cleanLat, cleanLng]);
+      updateAccuracy(cleanLat, cleanLng, accuracyMeters);
 
       if (lookupAddress) {
         field("address").value = "Looking up address...";
         clearTimeout(addressTimer);
         addressTimer = setTimeout(() => reverseGeocode(cleanLat, cleanLng), 350);
+      }
+    }
+
+    function updateAccuracy(lat, lng, accuracyMeters) {
+      currentAccuracy = Number.isFinite(Number(accuracyMeters)) ? Number(accuracyMeters) : null;
+      field("accuracyValue").textContent = currentAccuracy ? "+/- " + Math.round(currentAccuracy) + " m" : "--";
+
+      if (!map) return;
+
+      if (accuracyCircle) {
+        accuracyCircle.remove();
+        accuracyCircle = null;
+      }
+
+      if (currentAccuracy) {
+        accuracyCircle = L.circle([lat, lng], {
+          radius: currentAccuracy,
+          color: "#0f766e",
+          weight: 1,
+          opacity: 0.75,
+          fillColor: "#0f766e",
+          fillOpacity: 0.12
+        }).addTo(map);
       }
     }
 
@@ -644,7 +714,7 @@
         field("surveyForm").reset();
         field("condition").value = "No Issues";
         field("severity").value = "1";
-        setLocation(Number(report.latitude), Number(report.longitude), false);
+        setLocation(Number(report.latitude), Number(report.longitude), false, report.locationAccuracy || null);
         runScoring();
       } catch (error) {
         setMessage(error.message || "The report could not be submitted.", "error");
@@ -666,6 +736,7 @@
         email: field("email").value.trim(),
         latitude: field("latitude").value,
         longitude: field("longitude").value,
+        locationAccuracy: currentAccuracy ? Math.round(currentAccuracy) : "",
         address: field("address").value,
         condition: field("condition").value,
         severity: field("severity").value,
