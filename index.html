@@ -410,10 +410,6 @@
               <input id="address" name="address" readonly>
             </div>
 
-            <div class="full">
-              <label for="assetId">Sidewalk Asset ID</label>
-              <input id="assetId" name="assetId" type="text" placeholder="Segment, asset, or work order ID">
-            </div>
           </div>
         </details>
 
@@ -983,7 +979,6 @@
         longitude: field("longitude").value,
         locationAccuracy: currentAccuracy ? Math.round(currentAccuracy) : "",
         address: field("address").value,
-        assetId: field("assetId").value.trim(),
         condition: field("condition").value,
         severity: field("severity").value,
         verticalDisplacement: field("verticalDisplacement").value,
@@ -1193,7 +1188,7 @@
 
       const columns = [
         "reportId", "submittedAt", "reporterName", "email", "latitude", "longitude",
-        "locationAccuracy", "gpsLocked", "address", "assetId", "condition", "severity",
+        "locationAccuracy", "gpsLocked", "address", "condition", "severity",
         "verticalDisplacement", "gapWidth", "obstructionType", "passableWidth",
         "adaRampNearby", "curbRampCondition", "pedestrianVolume", "schoolTransitProximity",
         "comments", "photoName", "photoType", "score", "conditionClass",

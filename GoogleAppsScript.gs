@@ -1,7 +1,7 @@
 const SPREADSHEET_ID = "1vjhv8cJTGXBQ8S_e4-2MBbdXDFqGwqhSuIubEJX2NVk";
 const PHOTO_FOLDER_ID = "1x3G-tfnqcWpNOA5fkUfZ5_1VhdDzKiNn";
 const SHEET_NAME = "Sidewalk Reports";
-const PHOTO_URL_COLUMN = 24;
+const PHOTO_URL_COLUMN = 23;
 
 function doGet() {
   return ContentService
@@ -55,7 +55,6 @@ function handleReportUpload(data) {
     data.locationAccuracy,
     data.gpsLocked,
     data.address,
-    data.assetId,
     data.condition,
     data.severity,
     data.verticalDisplacement,
