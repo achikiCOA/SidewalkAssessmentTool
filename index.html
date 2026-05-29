@@ -116,7 +116,7 @@
 
     .score-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
       gap: 10px;
       padding: 12px;
       border-top: 1px solid var(--line);
@@ -334,7 +334,10 @@
     <section class="panel map-panel" aria-labelledby="mapTitle">
       <div class="panel-header">
         <h2 id="mapTitle">Map</h2>
-        <button class="secondary" type="button" id="locateButton">Use My Location</button>
+        <div class="button-row" style="margin-top: 0; width: min(320px, 100%);">
+          <button class="secondary" type="button" id="locateButton">Use My Location</button>
+          <button class="secondary" type="button" id="unlockLocationButton" style="display: none;">Unlock GPS</button>
+        </div>
       </div>
       <div id="map" aria-label="Sidewalk assessment map"></div>
       <div class="score-grid" aria-live="polite">
@@ -345,6 +348,10 @@
         <div class="metric">
           <span>Condition Class</span>
           <strong id="scoreClass">--</strong>
+        </div>
+        <div class="metric">
+          <span>Priority</span>
+          <strong id="priorityValue">--</strong>
         </div>
         <div class="metric">
           <span>Saved Reports</span>
@@ -391,6 +398,11 @@
             <input id="address" name="address" readonly>
           </div>
 
+          <div class="full">
+            <label for="assetId">Sidewalk Asset ID</label>
+            <input id="assetId" name="assetId" type="text" placeholder="Segment, asset, or work order ID">
+          </div>
+
           <div>
             <label for="condition">Issue Type</label>
             <select id="condition" name="condition">
@@ -411,6 +423,72 @@
               <option value="2">2 - Fair</option>
               <option value="3">3 - Poor</option>
               <option value="4">4 - Missing</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="verticalDisplacement">Vertical Displacement (in)</label>
+            <input id="verticalDisplacement" name="verticalDisplacement" type="number" min="0" max="24" step="0.25" inputmode="decimal">
+          </div>
+
+          <div>
+            <label for="gapWidth">Gap Width (in)</label>
+            <input id="gapWidth" name="gapWidth" type="number" min="0" max="48" step="0.25" inputmode="decimal">
+          </div>
+
+          <div>
+            <label for="obstructionType">Obstruction Type</label>
+            <select id="obstructionType" name="obstructionType">
+              <option>None</option>
+              <option>Vegetation</option>
+              <option>Utility pole/sign</option>
+              <option>Construction</option>
+              <option>Snow/ice</option>
+              <option>Parked vehicle</option>
+              <option>Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="passableWidth">Passable Width (ft)</label>
+            <input id="passableWidth" name="passableWidth" type="number" min="0" max="20" step="0.25" inputmode="decimal">
+          </div>
+
+          <div>
+            <label for="adaRampNearby">ADA Ramp Nearby</label>
+            <select id="adaRampNearby" name="adaRampNearby">
+              <option>No</option>
+              <option>Yes</option>
+              <option>Unknown</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="curbRampCondition">Curb Ramp Condition</label>
+            <select id="curbRampCondition" name="curbRampCondition">
+              <option>Not Applicable</option>
+              <option>Good</option>
+              <option>Fair</option>
+              <option>Poor</option>
+              <option>Missing/Blocked</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="pedestrianVolume">Pedestrian Volume</label>
+            <select id="pedestrianVolume" name="pedestrianVolume">
+              <option>Low</option>
+              <option>Medium</option>
+              <option>High</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="schoolTransitProximity">School/Transit Proximity</label>
+            <select id="schoolTransitProximity" name="schoolTransitProximity">
+              <option>No</option>
+              <option>Yes</option>
+              <option>Unknown</option>
             </select>
           </div>
 
@@ -459,6 +537,7 @@
     let addressTimer = null;
     let locationWatchId = null;
     let currentAccuracy = null;
+    let locationLocked = false;
 
     const field = (id) => document.getElementById(id);
 
@@ -496,13 +575,18 @@
         autoPan: true
       }).addTo(map);
 
-      map.on("click", (e) => setLocation(e.latlng.lat, e.latlng.lng, true, null));
+      map.on("click", (e) => {
+        unlockLocation(false);
+        setLocation(e.latlng.lat, e.latlng.lng, true, null);
+      });
       marker.on("dragend", () => {
+        unlockLocation(false);
         const point = marker.getLatLng();
         setLocation(point.lat, point.lng, true, null);
       });
 
       field("locateButton").addEventListener("click", locateUser);
+      field("unlockLocationButton").addEventListener("click", () => unlockLocation(true));
       attachResizeObserver(field("map"));
       setLocation(lat, lng, false, null);
 
@@ -526,6 +610,8 @@
         return;
       }
 
+      locationLocked = false;
+      field("unlockLocationButton").style.display = "none";
       field("locateButton").disabled = true;
       setMessage("Getting a high-accuracy GPS fix. This may take a few seconds.", "");
 
@@ -578,7 +664,30 @@
           const lat = bestPosition.coords.latitude;
           const lng = bestPosition.coords.longitude;
           setLocation(lat, lng, true, bestPosition.coords.accuracy);
+          lockLocation(bestPosition.coords.accuracy);
         }
+      }
+    }
+
+    function lockLocation(accuracyMeters) {
+      locationLocked = true;
+      field("unlockLocationButton").style.display = "";
+      field("locateButton").textContent = "Improve Location";
+      setMessage("Location locked. Accuracy: about " + Math.round(accuracyMeters) + " m. Drag the marker to override.", "ok");
+    }
+
+    function unlockLocation(showMessage) {
+      locationLocked = false;
+      field("unlockLocationButton").style.display = "none";
+      field("locateButton").textContent = "Use My Location";
+
+      if (locationWatchId !== null) {
+        navigator.geolocation.clearWatch(locationWatchId);
+        locationWatchId = null;
+      }
+
+      if (showMessage) {
+        setMessage("GPS lock cleared. Use My Location again or place the marker manually.", "");
       }
     }
 
@@ -639,7 +748,12 @@
       }
     }
 
-    function calculateScore() {
+    function numericValue(id) {
+      const value = Number(field(id).value);
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    function calculateScores() {
       const conditionPenalty = {
         "No Issues": 0,
         "Cracking": 25,
@@ -652,10 +766,56 @@
 
       const condition = field("condition").value;
       const severity = Number(field("severity").value);
-      const severityPenalty = Math.max(0, severity - 1) * 8;
-      const score = 100 - (conditionPenalty[condition] || 0) - severityPenalty;
+      const verticalDisplacement = numericValue("verticalDisplacement");
+      const gapWidth = numericValue("gapWidth");
+      const passableWidth = numericValue("passableWidth");
+      const obstructionType = field("obstructionType").value;
+      const adaRampNearby = field("adaRampNearby").value;
+      const curbRampCondition = field("curbRampCondition").value;
+      const pedestrianVolume = field("pedestrianVolume").value;
+      const schoolTransitProximity = field("schoolTransitProximity").value;
 
-      return Math.max(0, Math.min(100, score));
+      const severityPenalty = Math.max(0, severity - 1) * 7;
+      const displacementPenalty = Math.min(22, verticalDisplacement * 8);
+      const gapPenalty = Math.min(16, gapWidth * 3);
+      const widthPenalty = passableWidth > 0 && passableWidth < 4 ? Math.min(18, (4 - passableWidth) * 8) : 0;
+      const obstructionPenalty = obstructionType === "None" ? 0 : 12;
+      const curbRampPenalty = {
+        "Not Applicable": 0,
+        "Good": 0,
+        "Fair": 5,
+        "Poor": 12,
+        "Missing/Blocked": 18
+      }[curbRampCondition] || 0;
+
+      const gisScore = 100 -
+        (conditionPenalty[condition] || 0) -
+        severityPenalty -
+        displacementPenalty -
+        gapPenalty -
+        widthPenalty -
+        obstructionPenalty -
+        curbRampPenalty;
+
+      let priorityScore = (100 - Math.max(0, Math.min(100, gisScore))) * 0.65;
+      priorityScore += severity * 7;
+      priorityScore += verticalDisplacement >= 0.5 ? 12 : 0;
+      priorityScore += verticalDisplacement >= 1 ? 10 : 0;
+      priorityScore += gapWidth >= 1 ? 8 : 0;
+      priorityScore += passableWidth > 0 && passableWidth < 4 ? 12 : 0;
+      priorityScore += obstructionType === "None" ? 0 : 8;
+      priorityScore += adaRampNearby === "Yes" && curbRampCondition !== "Good" && curbRampCondition !== "Not Applicable" ? 12 : 0;
+      priorityScore += pedestrianVolume === "High" ? 10 : pedestrianVolume === "Medium" ? 5 : 0;
+      priorityScore += schoolTransitProximity === "Yes" ? 10 : 0;
+
+      return {
+        gisScore: Math.round(Math.max(0, Math.min(100, gisScore))),
+        priorityScore: Math.round(Math.max(0, Math.min(100, priorityScore)))
+      };
+    }
+
+    function calculateScore() {
+      return calculateScores().gisScore;
     }
 
     function getClass(score) {
@@ -666,15 +826,26 @@
       return "Failed";
     }
 
+    function getPriorityClass(score) {
+      if (score >= 75) return "Critical";
+      if (score >= 55) return "High";
+      if (score >= 30) return "Medium";
+      return "Low";
+    }
+
     function runScoring() {
-      const score = calculateScore();
-      field("scoreValue").textContent = score + " / 100";
-      field("scoreClass").textContent = getClass(score);
+      const scores = calculateScores();
+      field("scoreValue").textContent = scores.gisScore + " / 100";
+      field("scoreClass").textContent = getClass(scores.gisScore);
+      field("priorityValue").textContent = getPriorityClass(scores.priorityScore) + " (" + scores.priorityScore + ")";
     }
 
     function bindForm() {
-      field("condition").addEventListener("change", runScoring);
-      field("severity").addEventListener("change", runScoring);
+      [
+        "condition", "severity", "verticalDisplacement", "gapWidth", "obstructionType",
+        "passableWidth", "adaRampNearby", "curbRampCondition", "pedestrianVolume",
+        "schoolTransitProximity"
+      ].forEach((id) => field(id).addEventListener("input", runScoring));
       field("photo").addEventListener("change", updatePhotoStatus);
       field("downloadButton").addEventListener("click", downloadCsv);
 
@@ -714,6 +885,7 @@
         field("surveyForm").reset();
         field("condition").value = "No Issues";
         field("severity").value = "1";
+        updatePhotoStatus();
         setLocation(Number(report.latitude), Number(report.longitude), false, report.locationAccuracy || null);
         runScoring();
       } catch (error) {
@@ -724,7 +896,7 @@
     }
 
     async function buildReport() {
-      const score = calculateScore();
+      const scores = calculateScores();
       const photo = field("photo").files[0] || null;
       const photoData = photo ? await fileToDataUrl(photo) : "";
       const photoType = getDataUrlType(photoData) || (photo ? photo.type : "");
@@ -738,15 +910,27 @@
         longitude: field("longitude").value,
         locationAccuracy: currentAccuracy ? Math.round(currentAccuracy) : "",
         address: field("address").value,
+        assetId: field("assetId").value.trim(),
         condition: field("condition").value,
         severity: field("severity").value,
+        verticalDisplacement: field("verticalDisplacement").value,
+        gapWidth: field("gapWidth").value,
+        obstructionType: field("obstructionType").value,
+        passableWidth: field("passableWidth").value,
+        adaRampNearby: field("adaRampNearby").value,
+        curbRampCondition: field("curbRampCondition").value,
+        pedestrianVolume: field("pedestrianVolume").value,
+        schoolTransitProximity: field("schoolTransitProximity").value,
         comments: field("comments").value.trim(),
         photoName: photo ? photo.name : "",
         photoType: photoType,
         photoSize: photo ? photo.size : 0,
         photoData: photoData,
-        score: score,
-        conditionClass: getClass(score)
+        score: scores.gisScore,
+        conditionClass: getClass(scores.gisScore),
+        priorityScore: scores.priorityScore,
+        priorityClass: getPriorityClass(scores.priorityScore),
+        gpsLocked: locationLocked ? "Yes" : "No"
       };
     }
 
@@ -924,8 +1108,11 @@
 
       const columns = [
         "reportId", "submittedAt", "reporterName", "email", "latitude", "longitude",
-        "address", "condition", "severity", "comments", "photoName", "photoType",
-        "score", "conditionClass"
+        "locationAccuracy", "gpsLocked", "address", "assetId", "condition", "severity",
+        "verticalDisplacement", "gapWidth", "obstructionType", "passableWidth",
+        "adaRampNearby", "curbRampCondition", "pedestrianVolume", "schoolTransitProximity",
+        "comments", "photoName", "photoType", "score", "conditionClass",
+        "priorityScore", "priorityClass"
       ];
 
       const rows = [columns.join(",")].concat(reports.map((report) => {
