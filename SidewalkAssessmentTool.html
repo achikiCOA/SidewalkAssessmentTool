@@ -235,9 +235,29 @@
       background: #f8fafc;
     }
 
+    form details {
+      margin: 0 0 12px;
+      background: #fff;
+    }
+
     summary {
       cursor: pointer;
       font-weight: 700;
+    }
+
+    .field-hidden {
+      display: none;
+    }
+
+    .photo-preview {
+      display: none;
+      width: 100%;
+      max-height: 220px;
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      object-fit: cover;
+      background: #f5f7fa;
     }
 
     .help {
@@ -372,137 +392,156 @@
       <div class="message" id="formMessage">Tap the map or drag the marker to set the report location.</div>
 
       <form id="surveyForm">
-        <div class="form-grid">
-          <div>
-            <label for="reporterName">Name</label>
-            <input id="reporterName" name="reporterName" type="text" autocomplete="name">
-          </div>
+        <details open>
+          <summary>Location</summary>
+          <div class="form-grid">
+            <div>
+              <label for="latitude">Latitude</label>
+              <input id="latitude" name="latitude" readonly>
+            </div>
 
-          <div>
-            <label for="email">Email</label>
-            <input id="email" name="email" type="email" autocomplete="email">
-          </div>
+            <div>
+              <label for="longitude">Longitude</label>
+              <input id="longitude" name="longitude" readonly>
+            </div>
 
-          <div>
-            <label for="latitude">Latitude</label>
-            <input id="latitude" name="latitude" readonly>
-          </div>
+            <div class="full">
+              <label for="address">Address</label>
+              <input id="address" name="address" readonly>
+            </div>
 
-          <div>
-            <label for="longitude">Longitude</label>
-            <input id="longitude" name="longitude" readonly>
+            <div class="full">
+              <label for="assetId">Sidewalk Asset ID</label>
+              <input id="assetId" name="assetId" type="text" placeholder="Segment, asset, or work order ID">
+            </div>
           </div>
+        </details>
 
-          <div class="full">
-            <label for="address">Address</label>
-            <input id="address" name="address" readonly>
-          </div>
+        <details open>
+          <summary>Condition</summary>
+          <div class="form-grid">
+            <div>
+              <label for="condition">Issue Type</label>
+              <select id="condition" name="condition">
+                <option>No Issues</option>
+                <option>Cracking</option>
+                <option>Heaving</option>
+                <option>Gaps</option>
+                <option>Spalling</option>
+                <option>Obstruction</option>
+                <option>Other</option>
+              </select>
+            </div>
 
-          <div class="full">
-            <label for="assetId">Sidewalk Asset ID</label>
-            <input id="assetId" name="assetId" type="text" placeholder="Segment, asset, or work order ID">
-          </div>
+            <div>
+              <label for="severity">Severity</label>
+              <select id="severity" name="severity">
+                <option value="1">1 - Good</option>
+                <option value="2">2 - Fair</option>
+                <option value="3">3 - Poor</option>
+                <option value="4">4 - Missing</option>
+              </select>
+            </div>
 
-          <div>
-            <label for="condition">Issue Type</label>
-            <select id="condition" name="condition">
-              <option>No Issues</option>
-              <option>Cracking</option>
-              <option>Heaving</option>
-              <option>Gaps</option>
-              <option>Spalling</option>
-              <option>Obstruction</option>
-              <option>Other</option>
-            </select>
-          </div>
+            <div>
+              <label for="pedestrianVolume">Pedestrian Volume</label>
+              <select id="pedestrianVolume" name="pedestrianVolume">
+                <option>Low</option>
+                <option>Medium</option>
+                <option>High</option>
+              </select>
+            </div>
 
-          <div>
-            <label for="severity">Severity</label>
-            <select id="severity" name="severity">
-              <option value="1">1 - Good</option>
-              <option value="2">2 - Fair</option>
-              <option value="3">3 - Poor</option>
-              <option value="4">4 - Missing</option>
-            </select>
+            <div>
+              <label for="schoolTransitProximity">School/Transit Proximity</label>
+              <select id="schoolTransitProximity" name="schoolTransitProximity">
+                <option>No</option>
+                <option>Yes</option>
+                <option>Unknown</option>
+              </select>
+            </div>
           </div>
+        </details>
 
-          <div>
-            <label for="verticalDisplacement">Vertical Displacement (in)</label>
-            <input id="verticalDisplacement" name="verticalDisplacement" type="number" min="0" max="24" step="0.25" inputmode="decimal">
-          </div>
+        <details id="measurementsSection">
+          <summary>Measurements</summary>
+          <div class="form-grid">
+            <div data-measurement="vertical">
+              <label for="verticalDisplacement">Vertical Displacement (in)</label>
+              <input id="verticalDisplacement" name="verticalDisplacement" type="number" min="0" max="24" step="0.25" inputmode="decimal">
+            </div>
 
-          <div>
-            <label for="gapWidth">Gap Width (in)</label>
-            <input id="gapWidth" name="gapWidth" type="number" min="0" max="48" step="0.25" inputmode="decimal">
-          </div>
+            <div data-measurement="gap">
+              <label for="gapWidth">Gap Width (in)</label>
+              <input id="gapWidth" name="gapWidth" type="number" min="0" max="48" step="0.25" inputmode="decimal">
+            </div>
 
-          <div>
-            <label for="obstructionType">Obstruction Type</label>
-            <select id="obstructionType" name="obstructionType">
-              <option>None</option>
-              <option>Vegetation</option>
-              <option>Utility pole/sign</option>
-              <option>Construction</option>
-              <option>Snow/ice</option>
-              <option>Parked vehicle</option>
-              <option>Other</option>
-            </select>
-          </div>
+            <div data-measurement="obstruction">
+              <label for="obstructionType">Obstruction Type</label>
+              <select id="obstructionType" name="obstructionType">
+                <option>None</option>
+                <option>Vegetation</option>
+                <option>Utility pole/sign</option>
+                <option>Construction</option>
+                <option>Snow/ice</option>
+                <option>Parked vehicle</option>
+                <option>Other</option>
+              </select>
+            </div>
 
-          <div>
-            <label for="passableWidth">Passable Width (ft)</label>
-            <input id="passableWidth" name="passableWidth" type="number" min="0" max="20" step="0.25" inputmode="decimal">
-          </div>
+            <div data-measurement="width">
+              <label for="passableWidth">Passable Width (ft)</label>
+              <input id="passableWidth" name="passableWidth" type="number" min="0" max="20" step="0.25" inputmode="decimal">
+            </div>
 
-          <div>
-            <label for="adaRampNearby">ADA Ramp Nearby</label>
-            <select id="adaRampNearby" name="adaRampNearby">
-              <option>No</option>
-              <option>Yes</option>
-              <option>Unknown</option>
-            </select>
-          </div>
+            <div data-measurement="ada">
+              <label for="adaRampNearby">ADA Ramp Nearby</label>
+              <select id="adaRampNearby" name="adaRampNearby">
+                <option>No</option>
+                <option>Yes</option>
+                <option>Unknown</option>
+              </select>
+            </div>
 
-          <div>
-            <label for="curbRampCondition">Curb Ramp Condition</label>
-            <select id="curbRampCondition" name="curbRampCondition">
-              <option>Not Applicable</option>
-              <option>Good</option>
-              <option>Fair</option>
-              <option>Poor</option>
-              <option>Missing/Blocked</option>
-            </select>
+            <div data-measurement="curb-ramp">
+              <label for="curbRampCondition">Curb Ramp Condition</label>
+              <select id="curbRampCondition" name="curbRampCondition">
+                <option>Not Applicable</option>
+                <option>Good</option>
+                <option>Fair</option>
+                <option>Poor</option>
+                <option>Missing/Blocked</option>
+              </select>
+            </div>
           </div>
+        </details>
 
-          <div>
-            <label for="pedestrianVolume">Pedestrian Volume</label>
-            <select id="pedestrianVolume" name="pedestrianVolume">
-              <option>Low</option>
-              <option>Medium</option>
-              <option>High</option>
-            </select>
-          </div>
+        <details open>
+          <summary>Photo & Contact</summary>
+          <div class="form-grid">
+            <div>
+              <label for="reporterName">Name</label>
+              <input id="reporterName" name="reporterName" type="text" autocomplete="name">
+            </div>
 
-          <div>
-            <label for="schoolTransitProximity">School/Transit Proximity</label>
-            <select id="schoolTransitProximity" name="schoolTransitProximity">
-              <option>No</option>
-              <option>Yes</option>
-              <option>Unknown</option>
-            </select>
-          </div>
+            <div>
+              <label for="email">Email</label>
+              <input id="email" name="email" type="email" autocomplete="email">
+            </div>
 
-          <div class="full">
-            <label for="comments">Comments</label>
-            <textarea id="comments" name="comments"></textarea>
-          </div>
+            <div class="full">
+              <label for="comments">Comments</label>
+              <textarea id="comments" name="comments"></textarea>
+            </div>
 
-          <div class="full">
-            <label for="photo">Photo</label>
-            <input type="file" id="photo" name="photo" accept="image/*" capture="environment">
-            <p class="help" id="photoStatus">No photo selected.</p>
+            <div class="full">
+              <label for="photo">Photo</label>
+              <input type="file" id="photo" name="photo" accept="image/*" capture="environment">
+              <p class="help" id="photoStatus">No photo selected.</p>
+              <img class="photo-preview" id="photoPreview" alt="Selected photo preview">
+            </div>
           </div>
-        </div>
+        </details>
 
         <div class="button-row">
           <button type="submit" id="submitButton">Submit Report</button>
@@ -526,7 +565,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-05-27-gps-v1";
+    const APP_VERSION = "2026-05-29-mobile-ux-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
 
@@ -538,6 +577,7 @@
     let locationWatchId = null;
     let currentAccuracy = null;
     let locationLocked = false;
+    let photoPreviewUrl = "";
 
     const field = (id) => document.getElementById(id);
 
@@ -840,12 +880,42 @@
       field("priorityValue").textContent = getPriorityClass(scores.priorityScore) + " (" + scores.priorityScore + ")";
     }
 
+    function updateMeasurementVisibility() {
+      const condition = field("condition").value;
+      const hasAdaRamp = field("adaRampNearby").value === "Yes";
+      const visible = {
+        vertical: condition === "Heaving" || condition === "Cracking" || condition === "Other",
+        gap: condition === "Gaps" || condition === "Cracking" || condition === "Other",
+        obstruction: condition === "Obstruction",
+        width: condition === "Obstruction" || hasAdaRamp,
+        ada: condition !== "No Issues",
+        "curb-ramp": hasAdaRamp
+      };
+
+      document.querySelectorAll("[data-measurement]").forEach((group) => {
+        const key = group.getAttribute("data-measurement");
+        const isVisible = Boolean(visible[key]);
+        group.classList.toggle("field-hidden", !isVisible);
+        group.querySelectorAll("input, select").forEach((control) => {
+          control.disabled = !isVisible;
+          if (!isVisible) {
+            if (control.tagName === "SELECT") control.selectedIndex = 0;
+            else control.value = "";
+          }
+        });
+      });
+
+      field("measurementsSection").open = Object.values(visible).some(Boolean);
+      runScoring();
+    }
+
     function bindForm() {
       [
         "condition", "severity", "verticalDisplacement", "gapWidth", "obstructionType",
         "passableWidth", "adaRampNearby", "curbRampCondition", "pedestrianVolume",
         "schoolTransitProximity"
       ].forEach((id) => field(id).addEventListener("input", runScoring));
+      ["condition", "adaRampNearby"].forEach((id) => field(id).addEventListener("change", updateMeasurementVisibility));
       field("photo").addEventListener("change", updatePhotoStatus);
       field("downloadButton").addEventListener("click", downloadCsv);
 
@@ -853,6 +923,8 @@
         e.preventDefault();
         await submitReport();
       });
+
+      updateMeasurementVisibility();
     }
 
     function bindSettings() {
@@ -886,6 +958,7 @@
         field("condition").value = "No Issues";
         field("severity").value = "1";
         updatePhotoStatus();
+        updateMeasurementVisibility();
         setLocation(Number(report.latitude), Number(report.longitude), false, report.locationAccuracy || null);
         runScoring();
       } catch (error) {
@@ -936,13 +1009,25 @@
 
     function updatePhotoStatus() {
       const photo = field("photo").files[0] || null;
+      const preview = field("photoPreview");
+
+      if (photoPreviewUrl) {
+        URL.revokeObjectURL(photoPreviewUrl);
+        photoPreviewUrl = "";
+      }
+
       if (!photo) {
         field("photoStatus").textContent = "No photo selected.";
+        preview.removeAttribute("src");
+        preview.style.display = "none";
         return;
       }
 
       const sizeKb = Math.max(1, Math.round(photo.size / 1024));
       field("photoStatus").textContent = "Selected: " + photo.name + " (" + sizeKb + " KB)";
+      photoPreviewUrl = URL.createObjectURL(photo);
+      preview.src = photoPreviewUrl;
+      preview.style.display = "block";
     }
 
     function getDataUrlType(dataUrl) {
