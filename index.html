@@ -348,6 +348,14 @@
       display: none;
     }
 
+    .honeypot {
+      position: absolute;
+      left: -10000px;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+
     @media (max-width: 900px) {
       header {
         align-items: flex-start;
@@ -462,6 +470,11 @@
       </div>
 
       <form id="surveyForm">
+        <div class="honeypot" aria-hidden="true">
+          <label for="website">Website</label>
+          <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+
         <details open id="locationSection">
           <summary>Location</summary>
           <div class="form-grid">
@@ -631,9 +644,47 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-06-01-ux-v1";
+    const APP_VERSION = "2026-06-01-hardening-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
+    const SCORE_CONFIG = {
+      conditionPenalty: {
+        "No Issues": 0,
+        "Cracking": 25,
+        "Heaving": 35,
+        "Gaps": 40,
+        "Spalling": 20,
+        "Obstruction": 30,
+        "Other": 15
+      },
+      severityPenaltyStep: 7,
+      displacementPenaltyPerInch: 8,
+      displacementPenaltyMax: 22,
+      gapPenaltyPerInch: 3,
+      gapPenaltyMax: 16,
+      passableWidthTargetFt: 4,
+      passableWidthPenaltyPerFt: 8,
+      passableWidthPenaltyMax: 18,
+      obstructionPenalty: 12,
+      curbRampPenalty: {
+        "Not Applicable": 0,
+        "Good": 0,
+        "Fair": 5,
+        "Poor": 12,
+        "Missing/Blocked": 18
+      },
+      priorityConditionWeight: 0.65,
+      prioritySeverityStep: 7,
+      priorityDisplacementHalfInch: 12,
+      priorityDisplacementOneInch: 10,
+      priorityGapOneInch: 8,
+      priorityNarrowWidth: 12,
+      priorityObstruction: 8,
+      priorityAdaRampIssue: 12,
+      priorityPedestrianHigh: 10,
+      priorityPedestrianMedium: 5,
+      prioritySchoolTransit: 10
+    };
 
     let map = null;
     let marker = null;
@@ -860,16 +911,6 @@
     }
 
     function calculateScores() {
-      const conditionPenalty = {
-        "No Issues": 0,
-        "Cracking": 25,
-        "Heaving": 35,
-        "Gaps": 40,
-        "Spalling": 20,
-        "Obstruction": 30,
-        "Other": 15
-      };
-
       const condition = field("condition").value;
       const severity = Number(field("severity").value);
       const verticalDisplacement = numericValue("verticalDisplacement");
@@ -881,21 +922,17 @@
       const pedestrianVolume = field("pedestrianVolume").value;
       const schoolTransitProximity = field("schoolTransitProximity").value;
 
-      const severityPenalty = Math.max(0, severity - 1) * 7;
-      const displacementPenalty = Math.min(22, verticalDisplacement * 8);
-      const gapPenalty = Math.min(16, gapWidth * 3);
-      const widthPenalty = passableWidth > 0 && passableWidth < 4 ? Math.min(18, (4 - passableWidth) * 8) : 0;
-      const obstructionPenalty = obstructionType === "None" ? 0 : 12;
-      const curbRampPenalty = {
-        "Not Applicable": 0,
-        "Good": 0,
-        "Fair": 5,
-        "Poor": 12,
-        "Missing/Blocked": 18
-      }[curbRampCondition] || 0;
+      const severityPenalty = Math.max(0, severity - 1) * SCORE_CONFIG.severityPenaltyStep;
+      const displacementPenalty = Math.min(SCORE_CONFIG.displacementPenaltyMax, verticalDisplacement * SCORE_CONFIG.displacementPenaltyPerInch);
+      const gapPenalty = Math.min(SCORE_CONFIG.gapPenaltyMax, gapWidth * SCORE_CONFIG.gapPenaltyPerInch);
+      const widthPenalty = passableWidth > 0 && passableWidth < SCORE_CONFIG.passableWidthTargetFt
+        ? Math.min(SCORE_CONFIG.passableWidthPenaltyMax, (SCORE_CONFIG.passableWidthTargetFt - passableWidth) * SCORE_CONFIG.passableWidthPenaltyPerFt)
+        : 0;
+      const obstructionPenalty = obstructionType === "None" ? 0 : SCORE_CONFIG.obstructionPenalty;
+      const curbRampPenalty = SCORE_CONFIG.curbRampPenalty[curbRampCondition] || 0;
 
       const gisScore = 100 -
-        (conditionPenalty[condition] || 0) -
+        (SCORE_CONFIG.conditionPenalty[condition] || 0) -
         severityPenalty -
         displacementPenalty -
         gapPenalty -
@@ -903,16 +940,16 @@
         obstructionPenalty -
         curbRampPenalty;
 
-      let priorityScore = (100 - Math.max(0, Math.min(100, gisScore))) * 0.65;
-      priorityScore += severity * 7;
-      priorityScore += verticalDisplacement >= 0.5 ? 12 : 0;
-      priorityScore += verticalDisplacement >= 1 ? 10 : 0;
-      priorityScore += gapWidth >= 1 ? 8 : 0;
-      priorityScore += passableWidth > 0 && passableWidth < 4 ? 12 : 0;
-      priorityScore += obstructionType === "None" ? 0 : 8;
-      priorityScore += adaRampNearby === "Yes" && curbRampCondition !== "Good" && curbRampCondition !== "Not Applicable" ? 12 : 0;
-      priorityScore += pedestrianVolume === "High" ? 10 : pedestrianVolume === "Medium" ? 5 : 0;
-      priorityScore += schoolTransitProximity === "Yes" ? 10 : 0;
+      let priorityScore = (100 - Math.max(0, Math.min(100, gisScore))) * SCORE_CONFIG.priorityConditionWeight;
+      priorityScore += severity * SCORE_CONFIG.prioritySeverityStep;
+      priorityScore += verticalDisplacement >= 0.5 ? SCORE_CONFIG.priorityDisplacementHalfInch : 0;
+      priorityScore += verticalDisplacement >= 1 ? SCORE_CONFIG.priorityDisplacementOneInch : 0;
+      priorityScore += gapWidth >= 1 ? SCORE_CONFIG.priorityGapOneInch : 0;
+      priorityScore += passableWidth > 0 && passableWidth < SCORE_CONFIG.passableWidthTargetFt ? SCORE_CONFIG.priorityNarrowWidth : 0;
+      priorityScore += obstructionType === "None" ? 0 : SCORE_CONFIG.priorityObstruction;
+      priorityScore += adaRampNearby === "Yes" && curbRampCondition !== "Good" && curbRampCondition !== "Not Applicable" ? SCORE_CONFIG.priorityAdaRampIssue : 0;
+      priorityScore += pedestrianVolume === "High" ? SCORE_CONFIG.priorityPedestrianHigh : pedestrianVolume === "Medium" ? SCORE_CONFIG.priorityPedestrianMedium : 0;
+      priorityScore += schoolTransitProximity === "Yes" ? SCORE_CONFIG.prioritySchoolTransit : 0;
 
       return {
         gisScore: Math.round(Math.max(0, Math.min(100, gisScore))),
@@ -1169,6 +1206,7 @@
       return {
         reportId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
         submittedAt: new Date().toISOString(),
+        website: field("website").value.trim(),
         reporterName: field("reporterName").value.trim(),
         email: field("email").value.trim(),
         latitude: field("latitude").value,
@@ -1344,8 +1382,17 @@
 
     function saveReport(report) {
       const reports = getReports();
-      reports.push(report);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+      const localReport = Object.assign({}, report, {
+        photoData: "",
+        photoDataStored: Boolean(report.photoData)
+      });
+
+      try {
+        reports.push(localReport);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+      } catch (error) {
+        console.warn("Local report backup was skipped.", error);
+      }
     }
 
     function updateSavedCount() {

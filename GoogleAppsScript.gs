@@ -1,4 +1,8 @@
 const PHOTO_URL_COLUMN = 23;
+const PHOTO_STATUS_COLUMN = 28;
+const ARCGIS_STATUS_COLUMN = 29;
+const ARCGIS_OBJECT_ID_COLUMN = 30;
+const ARCGIS_ERROR_COLUMN = 31;
 
 function doGet() {
   return ContentService
@@ -39,6 +43,12 @@ function doPost(e) {
 }
 
 function handleReportUpload(data) {
+  if (isSpamSubmission(data)) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true, action: "ignored" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
   const sheet = ss.getSheetByName(getRequiredProperty("SHEET_NAME")) || ss.getSheets()[0];
 
@@ -69,12 +79,23 @@ function handleReportUpload(data) {
     data.score,
     data.conditionClass,
     data.priorityScore,
-    data.priorityClass
+    data.priorityClass,
+    data.hasPhoto ? "Photo upload pending" : "No photo",
+    "ArcGIS pending",
+    "",
+    ""
   ]);
 
+  const rowNumber = sheet.getLastRow();
+
   try {
-    addArcGISFeature(data, "");
+    const arcgisResult = addArcGISFeature(data, "");
+    sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS created");
+    sheet.getRange(rowNumber, ARCGIS_OBJECT_ID_COLUMN).setValue(arcgisResult.objectId || "");
+    sheet.getRange(rowNumber, ARCGIS_ERROR_COLUMN).setValue("");
   } catch (arcgisErr) {
+    sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS failed");
+    sheet.getRange(rowNumber, ARCGIS_ERROR_COLUMN).setValue(arcgisErr.message);
     console.error("ArcGIS add feature failed: " + (arcgisErr.stack || arcgisErr.message));
   }
 
@@ -93,7 +114,7 @@ function handlePhotoUpload(data) {
   }
 
   try {
-    sheet.getRange(rowNumber, PHOTO_URL_COLUMN).setValue("Photo upload received");
+    sheet.getRange(rowNumber, PHOTO_STATUS_COLUMN).setValue("Photo upload received");
 
     const folder = DriveApp.getFolderById(getRequiredProperty("PHOTO_FOLDER_ID"));
     const match = String(data.photoData || "").match(/^data:([^;]+);base64,(.+)$/);
@@ -107,10 +128,13 @@ function handlePhotoUpload(data) {
     const photoUrl = file.getUrl();
 
     sheet.getRange(rowNumber, PHOTO_URL_COLUMN).setValue(photoUrl);
+    sheet.getRange(rowNumber, PHOTO_STATUS_COLUMN).setValue("Photo uploaded");
 
     try {
       updateArcGISPhotoUrl(data.reportId, photoUrl);
     } catch (arcgisErr) {
+      sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS photo update failed");
+      sheet.getRange(rowNumber, ARCGIS_ERROR_COLUMN).setValue(arcgisErr.message);
       console.error("ArcGIS photo URL update failed: " + (arcgisErr.stack || arcgisErr.message));
     }
 
@@ -118,6 +142,7 @@ function handlePhotoUpload(data) {
       .createTextOutput(JSON.stringify({ ok: true, action: "photo", photoUrl: photoUrl }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
+    sheet.getRange(rowNumber, PHOTO_STATUS_COLUMN).setValue("Photo upload failed");
     sheet.getRange(rowNumber, PHOTO_URL_COLUMN).setValue("Photo upload failed: " + err.message);
 
     return ContentService
@@ -138,6 +163,40 @@ function authorizeArcGIS() {
   return ContentService
     .createTextOutput(JSON.stringify({ ok: true, hasToken: Boolean(token) }))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function retryArcGISSync(reportId) {
+  const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
+  const sheet = ss.getSheetByName(getRequiredProperty("SHEET_NAME")) || ss.getSheets()[0];
+  const rowNumber = findReportRow(sheet, reportId);
+
+  if (!rowNumber) {
+    throw new Error("Could not find report row for ArcGIS retry: " + reportId);
+  }
+
+  const rowData = getReportDataFromRow(sheet, rowNumber);
+  const photoUrl = textValue(rowData.photoUrl);
+
+  try {
+    const existing = findArcGISObject(reportId);
+
+    if (existing) {
+      updateArcGISPhotoUrl(reportId, photoUrl);
+      sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS updated");
+      sheet.getRange(rowNumber, ARCGIS_OBJECT_ID_COLUMN).setValue(existing.objectId);
+    } else {
+      const result = addArcGISFeature(rowData, photoUrl);
+      sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS created");
+      sheet.getRange(rowNumber, ARCGIS_OBJECT_ID_COLUMN).setValue(result.objectId || "");
+    }
+
+    sheet.getRange(rowNumber, ARCGIS_ERROR_COLUMN).setValue("");
+    return { ok: true, reportId: reportId };
+  } catch (err) {
+    sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS failed");
+    sheet.getRange(rowNumber, ARCGIS_ERROR_COLUMN).setValue(err.message);
+    throw err;
+  }
 }
 
 function addArcGISFeature(data, photoUrl) {
@@ -321,4 +380,20 @@ function findReportRow(sheet, reportId) {
   }
 
   return 0;
+}
+
+function getReportDataFromRow(sheet, rowNumber) {
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const values = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const data = {};
+
+  headers.forEach((header, index) => {
+    if (header) data[String(header)] = values[index];
+  });
+
+  return data;
+}
+
+function isSpamSubmission(data) {
+  return Boolean(data && data.website);
 }
