@@ -71,9 +71,9 @@
 
     main {
       display: grid;
-      grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+      grid-template-columns: minmax(0, 1fr);
       gap: 16px;
-      width: min(1420px, 100%);
+      width: min(980px, 100%);
       margin: 0 auto;
       padding: 16px;
     }
@@ -112,6 +112,7 @@
     #map {
       width: 100%;
       min-height: 420px;
+      margin-top: 12px;
       background: #dce5ee;
     }
 
@@ -216,6 +217,10 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
       flex: 1 1 360px;
       margin-top: 0;
+    }
+
+    .location-fields {
+      margin-top: 12px;
     }
 
     button {
@@ -474,58 +479,20 @@
   <section class="intro-screen" id="introScreen">
     <h2>Before You Start</h2>
     <ol>
-      <li>Stand near the sidewalk issue and tap Use My Location, or place the marker manually.</li>
-      <li>Take a photo, then select all issue types that apply.</li>
-      <li>Add measurements when the app asks for them, then submit the report.</li>
+      <li>Take a photo of the sidewalk issue first.</li>
+      <li>Select all issue types that apply and add any measurements.</li>
+      <li>Use the map to confirm the exact location, add contact information, review the photo, then submit.</li>
     </ol>
     <button type="button" id="startAssessmentButton">Start Assessment</button>
   </section>
 
   <main class="app-shell" id="appShell">
-    <section class="panel map-panel" aria-labelledby="mapTitle">
-      <div class="panel-header">
-        <h2 id="mapTitle">Map</h2>
-        <div class="button-row location-actions">
-          <button class="secondary" type="button" id="locateButton">Use My Location</button>
-          <button class="secondary" type="button" id="confirmLocationButton">Confirm Location</button>
-          <button class="secondary" type="button" id="unlockLocationButton" style="display: none;">Unlock GPS</button>
-        </div>
-      </div>
-      <div id="map" aria-label="Sidewalk assessment map"></div>
-      <div class="score-grid" aria-live="polite">
-        <div class="metric">
-          <span>GIS Score</span>
-          <strong id="scoreValue">--</strong>
-        </div>
-        <div class="metric">
-          <span>Condition Class</span>
-          <strong id="scoreClass">--</strong>
-        </div>
-        <div class="metric">
-          <span>Priority</span>
-          <strong id="priorityValue">--</strong>
-        </div>
-        <div class="metric">
-          <span>Saved Reports</span>
-          <strong id="savedCount">0</strong>
-        </div>
-        <div class="metric">
-          <span>GPS Accuracy</span>
-          <strong id="accuracyValue">--</strong>
-        </div>
-        <div class="metric">
-          <span>Location Status</span>
-          <strong id="locationStatus">Needs confirmation</strong>
-        </div>
-      </div>
-    </section>
-
     <section class="panel" aria-labelledby="surveyTitle">
       <div class="panel-header">
         <h2 id="surveyTitle">Survey</h2>
       </div>
 
-      <div class="message" id="formMessage">Tap the map or drag the marker to set the report location.</div>
+      <div class="message" id="formMessage">Start with a photo, then move through condition, measurements, location, contact, preview, and submit.</div>
       <div class="quick-actions">
         <button class="secondary" type="button" id="photoFirstButton">Take Photo First</button>
         <button class="secondary" type="button" id="newReportButton">New Report</button>
@@ -545,29 +512,19 @@
           <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
         </div>
 
-        <details open id="locationSection">
-          <summary>Location</summary>
+        <details open id="photoSection">
+          <summary>1. Take Photo</summary>
           <div class="form-grid">
-            <div>
-              <label for="latitude">Latitude</label>
-              <input id="latitude" name="latitude" readonly>
-            </div>
-
-            <div>
-              <label for="longitude">Longitude</label>
-              <input id="longitude" name="longitude" readonly>
-            </div>
-
             <div class="full">
-              <label for="address">Address</label>
-              <input id="address" name="address" readonly>
+              <label for="photo">Photo</label>
+              <input type="file" id="photo" name="photo" accept="image/*" capture="environment">
+              <p class="help" id="photoStatus">No photo selected.</p>
             </div>
-
           </div>
         </details>
 
         <details open id="conditionSection">
-          <summary>Condition</summary>
+          <summary>2. Condition</summary>
           <div class="form-grid">
             <div>
               <label for="condition">Issue Type</label>
@@ -609,11 +566,16 @@
                 <option>Unknown</option>
               </select>
             </div>
+
+            <div class="full">
+              <label for="comments">Comments</label>
+              <textarea id="comments" name="comments"></textarea>
+            </div>
           </div>
         </details>
 
         <details id="measurementsSection">
-          <summary>Measurements</summary>
+          <summary>3. Measurements</summary>
           <div class="form-grid">
             <div data-measurement="vertical">
               <label for="verticalDisplacement">Vertical Displacement (in)</label>
@@ -693,8 +655,63 @@
           </div>
         </details>
 
-        <details open id="photoSection">
-          <summary>Photo & Contact</summary>
+        <details id="locationSection">
+          <summary>4. Location & Coordinates</summary>
+          <div class="button-row location-actions">
+            <button class="secondary" type="button" id="locateButton">Use My Location</button>
+            <button class="secondary" type="button" id="confirmLocationButton">Confirm Location</button>
+            <button class="secondary" type="button" id="unlockLocationButton" style="display: none;">Unlock GPS</button>
+          </div>
+
+          <div id="map" aria-label="Sidewalk assessment map"></div>
+
+          <div class="score-grid" aria-live="polite">
+            <div class="metric">
+              <span>GIS Score</span>
+              <strong id="scoreValue">--</strong>
+            </div>
+            <div class="metric">
+              <span>Condition Class</span>
+              <strong id="scoreClass">--</strong>
+            </div>
+            <div class="metric">
+              <span>Priority</span>
+              <strong id="priorityValue">--</strong>
+            </div>
+            <div class="metric">
+              <span>Saved Reports</span>
+              <strong id="savedCount">0</strong>
+            </div>
+            <div class="metric">
+              <span>GPS Accuracy</span>
+              <strong id="accuracyValue">--</strong>
+            </div>
+            <div class="metric">
+              <span>Location Status</span>
+              <strong id="locationStatus">Needs confirmation</strong>
+            </div>
+          </div>
+
+          <div class="form-grid location-fields">
+            <div>
+              <label for="latitude">Latitude</label>
+              <input id="latitude" name="latitude" readonly>
+            </div>
+
+            <div>
+              <label for="longitude">Longitude</label>
+              <input id="longitude" name="longitude" readonly>
+            </div>
+
+            <div class="full">
+              <label for="address">Address</label>
+              <input id="address" name="address" readonly>
+            </div>
+          </div>
+        </details>
+
+        <details open id="contactSection">
+          <summary>5. Contact Information</summary>
           <div class="form-grid">
             <div>
               <label for="reporterName">Name</label>
@@ -705,16 +722,13 @@
               <label for="email">Email</label>
               <input id="email" name="email" type="email" autocomplete="email">
             </div>
+          </div>
+        </details>
 
+        <details open id="photoPreviewSection">
+          <summary>6. Photo Preview</summary>
+          <div class="form-grid">
             <div class="full">
-              <label for="comments">Comments</label>
-              <textarea id="comments" name="comments"></textarea>
-            </div>
-
-            <div class="full">
-              <label for="photo">Photo</label>
-              <input type="file" id="photo" name="photo" accept="image/*" capture="environment">
-              <p class="help" id="photoStatus">No photo selected.</p>
               <img class="photo-preview" id="photoPreview" alt="Selected photo preview">
             </div>
           </div>
@@ -742,7 +756,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-06-01-location-confirmation-v1";
+    const APP_VERSION = "2026-06-01-field-flow-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -846,6 +860,11 @@
       field("locateButton").addEventListener("click", locateUser);
       field("confirmLocationButton").addEventListener("click", confirmLocation);
       field("unlockLocationButton").addEventListener("click", () => unlockLocation(true));
+      field("locationSection").addEventListener("toggle", () => {
+        if (field("locationSection").open && map) {
+          setTimeout(() => map.invalidateSize(true), 80);
+        }
+      });
       attachResizeObserver(field("map"));
       setLocation(lat, lng, false, null);
 
@@ -1408,7 +1427,8 @@
       field("successPanel").style.display = "none";
       field("surveyForm").style.display = "";
       field("formMessage").scrollIntoView({ behavior: "smooth", block: "start" });
-      setMessage("Tap the map, use GPS, or take a photo to begin a new report.", "");
+      openSection("photoSection");
+      setMessage("Start with a photo, then continue through condition, measurements, location, contact, preview, and submit.", "");
     }
 
     function startPhotoFirst() {
@@ -1423,12 +1443,17 @@
       if (section && "open" in section) {
         section.open = true;
         section.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (sectionId === "locationSection" && map) {
+          setTimeout(() => map.invalidateSize(true), 120);
+        }
       }
     }
 
     function startAssessment() {
       field("introScreen").style.display = "none";
       field("appShell").style.display = "grid";
+      openSection("photoSection");
+      setMessage("Take or select a photo first, then continue to condition and measurements.", "");
       if (map) {
         setTimeout(() => map.invalidateSize(true), 100);
       }
@@ -1517,6 +1542,7 @@
       photoPreviewUrl = URL.createObjectURL(photo);
       preview.src = photoPreviewUrl;
       preview.style.display = "block";
+      openSection("conditionSection");
     }
 
     function getDataUrlType(dataUrl) {
