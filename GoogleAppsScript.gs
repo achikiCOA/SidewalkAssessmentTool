@@ -60,6 +60,7 @@ function handleReportUpload(data) {
     latitude: data.latitude,
     longitude: data.longitude,
     locationAccuracy: data.locationAccuracy,
+    locationConfirmed: data.locationConfirmed,
     gpsLocked: data.gpsLocked,
     address: data.address,
     condition: data.condition,

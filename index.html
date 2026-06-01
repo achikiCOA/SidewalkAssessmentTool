@@ -90,6 +90,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
       gap: 10px;
       padding: 13px 14px;
       border-bottom: 1px solid var(--line);
@@ -145,6 +146,20 @@
       overflow-wrap: anywhere;
     }
 
+    .accuracy-good,
+    .location-confirmed {
+      color: #047857;
+    }
+
+    .accuracy-fair,
+    .location-needs-confirmation {
+      color: #b45309;
+    }
+
+    .accuracy-poor {
+      color: #b42318;
+    }
+
     form {
       padding: 14px;
     }
@@ -197,6 +212,12 @@
       margin-top: 14px;
     }
 
+    .location-actions {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      flex: 1 1 360px;
+      margin-top: 0;
+    }
+
     button {
       min-height: 46px;
       padding: 11px 12px;
@@ -220,6 +241,15 @@
 
     button.secondary:hover {
       background: #dbe4ee;
+    }
+
+    button.confirmed {
+      color: #fff;
+      background: #047857;
+    }
+
+    button.confirmed:hover {
+      background: #065f46;
     }
 
     button:disabled {
@@ -455,8 +485,9 @@
     <section class="panel map-panel" aria-labelledby="mapTitle">
       <div class="panel-header">
         <h2 id="mapTitle">Map</h2>
-        <div class="button-row" style="margin-top: 0; width: min(320px, 100%);">
+        <div class="button-row location-actions">
           <button class="secondary" type="button" id="locateButton">Use My Location</button>
+          <button class="secondary" type="button" id="confirmLocationButton">Confirm Location</button>
           <button class="secondary" type="button" id="unlockLocationButton" style="display: none;">Unlock GPS</button>
         </div>
       </div>
@@ -481,6 +512,10 @@
         <div class="metric">
           <span>GPS Accuracy</span>
           <strong id="accuracyValue">--</strong>
+        </div>
+        <div class="metric">
+          <span>Location Status</span>
+          <strong id="locationStatus">Needs confirmation</strong>
         </div>
       </div>
     </section>
@@ -707,7 +742,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-06-01-field-test-fixes-v1";
+    const APP_VERSION = "2026-06-01-location-confirmation-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -758,6 +793,7 @@
     let locationWatchId = null;
     let currentAccuracy = null;
     let locationLocked = false;
+    let locationConfirmed = false;
     let photoPreviewUrl = "";
 
     const field = (id) => document.getElementById(id);
@@ -808,6 +844,7 @@
       });
 
       field("locateButton").addEventListener("click", locateUser);
+      field("confirmLocationButton").addEventListener("click", confirmLocation);
       field("unlockLocationButton").addEventListener("click", () => unlockLocation(true));
       attachResizeObserver(field("map"));
       setLocation(lat, lng, false, null);
@@ -895,7 +932,8 @@
       locationLocked = true;
       field("unlockLocationButton").style.display = "";
       field("locateButton").textContent = "Improve Location";
-      setMessage("Location locked. Accuracy: about " + Math.round(accuracyMeters) + " m. Drag the marker to override.", "ok");
+      markLocationUnconfirmed();
+      setMessage("GPS found your location. Drag the marker onto the exact sidewalk spot, then tap Confirm Location.", "ok");
     }
 
     function unlockLocation(showMessage) {
@@ -922,6 +960,7 @@
 
       if (marker) marker.setLatLng([cleanLat, cleanLng]);
       updateAccuracy(cleanLat, cleanLng, accuracyMeters);
+      markLocationUnconfirmed();
 
       if (lookupAddress) {
         field("address").value = "Looking up address...";
@@ -930,9 +969,50 @@
       }
     }
 
+    function confirmLocation() {
+      const defaultLat = DEFAULT_LOCATION.lat.toFixed(7);
+      const defaultLng = DEFAULT_LOCATION.lng.toFixed(7);
+
+      if (field("latitude").value === defaultLat && field("longitude").value === defaultLng) {
+        setMessage("Use GPS or drag the marker to the sidewalk issue before confirming.", "error");
+        openSection("locationSection");
+        return;
+      }
+
+      locationConfirmed = true;
+      updateLocationConfirmationStatus();
+      setMessage("Location confirmed. Continue through the report and submit when ready.", "ok");
+    }
+
+    function markLocationUnconfirmed() {
+      locationConfirmed = false;
+      updateLocationConfirmationStatus();
+    }
+
+    function updateLocationConfirmationStatus() {
+      const status = field("locationStatus");
+      const button = field("confirmLocationButton");
+      if (!status || !button) return;
+
+      status.textContent = locationConfirmed ? "Confirmed" : "Needs confirmation";
+      status.className = locationConfirmed ? "location-confirmed" : "location-needs-confirmation";
+      button.textContent = locationConfirmed ? "Location Confirmed" : "Confirm Location";
+      button.className = locationConfirmed ? "confirmed" : "secondary";
+    }
+
     function updateAccuracy(lat, lng, accuracyMeters) {
       currentAccuracy = Number.isFinite(Number(accuracyMeters)) ? Number(accuracyMeters) : null;
-      field("accuracyValue").textContent = currentAccuracy ? "+/- " + Math.round(currentAccuracy) + " m" : "--";
+      const accuracyValue = field("accuracyValue");
+
+      if (currentAccuracy) {
+        const rounded = Math.round(currentAccuracy);
+        const quality = rounded <= 15 ? "Good" : rounded <= 50 ? "Fair" : "Poor";
+        accuracyValue.textContent = "+/- " + rounded + " m - " + quality;
+        accuracyValue.className = rounded <= 15 ? "accuracy-good" : rounded <= 50 ? "accuracy-fair" : "accuracy-poor";
+      } else {
+        accuracyValue.textContent = "--";
+        accuracyValue.className = "";
+      }
 
       if (!map) return;
 
@@ -1275,6 +1355,10 @@
         return { ok: false, sectionId: "locationSection", message: "Use your location or place the marker before submitting." };
       }
 
+      if (!locationConfirmed) {
+        return { ok: false, sectionId: "locationSection", message: "Confirm the marker location before submitting." };
+      }
+
       if (!getSelectedConditions().length) {
         return { ok: false, sectionId: "conditionSection", message: "Choose at least one issue type before submitting." };
       }
@@ -1316,6 +1400,7 @@
       ].forEach(syncSegmentedControl);
       updatePhotoStatus();
       updateMeasurementVisibility();
+      markLocationUnconfirmed();
     }
 
     function startNewReport() {
@@ -1386,6 +1471,7 @@
         latitude: field("latitude").value,
         longitude: field("longitude").value,
         locationAccuracy: currentAccuracy ? Math.round(currentAccuracy) : "",
+        locationConfirmed: locationConfirmed ? "Yes" : "No",
         address: field("address").value,
         condition: getSelectedConditions().join("; "),
         severity: field("severity").value,
@@ -1605,7 +1691,7 @@
 
       const columns = [
         "reportId", "submittedAt", "reporterName", "email", "latitude", "longitude",
-        "locationAccuracy", "gpsLocked", "address", "condition", "severity",
+        "locationAccuracy", "locationConfirmed", "gpsLocked", "address", "condition", "severity",
         "verticalDisplacement", "gapWidth", "obstructionType", "passableWidth",
         "adaRampNearby", "curbRampCondition", "pedestrianVolume", "schoolTransitProximity",
         "comments", "photoName", "photoType", "score", "conditionClass",
