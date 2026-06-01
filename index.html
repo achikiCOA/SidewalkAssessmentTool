@@ -317,6 +317,31 @@
       line-height: 1.35;
     }
 
+    .intro-screen {
+      width: min(760px, calc(100% - 24px));
+      margin: 18px auto;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--shadow);
+    }
+
+    .intro-screen h2 {
+      margin: 0 0 10px;
+      font-size: 1.15rem;
+    }
+
+    .intro-screen ol {
+      margin: 10px 0 14px;
+      padding-left: 20px;
+      line-height: 1.45;
+    }
+
+    .app-shell {
+      display: none;
+    }
+
     .help {
       margin: 8px 0 0;
       color: var(--muted);
@@ -416,7 +441,17 @@
     <div class="status-pill" id="uploadStatus">Spreadsheet upload not configured</div>
   </header>
 
-  <main>
+  <section class="intro-screen" id="introScreen">
+    <h2>Before You Start</h2>
+    <ol>
+      <li>Stand near the sidewalk issue and tap Use My Location, or place the marker manually.</li>
+      <li>Take a photo, then select all issue types that apply.</li>
+      <li>Add measurements when the app asks for them, then submit the report.</li>
+    </ol>
+    <button type="button" id="startAssessmentButton">Start Assessment</button>
+  </section>
+
+  <main class="app-shell" id="appShell">
     <section class="panel map-panel" aria-labelledby="mapTitle">
       <div class="panel-header">
         <h2 id="mapTitle">Map</h2>
@@ -501,7 +536,7 @@
           <div class="form-grid">
             <div>
               <label for="condition">Issue Type</label>
-              <select id="condition" name="condition">
+              <select id="condition" name="condition" multiple>
                 <option>No Issues</option>
                 <option>Cracking</option>
                 <option>Heaving</option>
@@ -515,9 +550,9 @@
             <div>
               <label for="severity">Severity</label>
               <select id="severity" name="severity">
-                <option value="1">1 - Good</option>
-                <option value="2">2 - Fair</option>
-                <option value="3">3 - Poor</option>
+                <option value="1">1 - Fair</option>
+                <option value="2">2 - Poor</option>
+                <option value="3">3 - Severe</option>
                 <option value="4">4 - Missing</option>
               </select>
             </div>
@@ -547,12 +582,40 @@
           <div class="form-grid">
             <div data-measurement="vertical">
               <label for="verticalDisplacement">Vertical Displacement (in)</label>
-              <input id="verticalDisplacement" name="verticalDisplacement" type="number" min="0" max="24" step="0.25" inputmode="decimal">
+              <select id="verticalDisplacement" name="verticalDisplacement">
+                <option value="">Not measured</option>
+                <option value="0.25">1/4"</option>
+                <option value="0.5">1/2"</option>
+                <option value="0.75">3/4"</option>
+                <option value="1">1"</option>
+                <option value="1.25">1 1/4"</option>
+                <option value="1.5">1 1/2"</option>
+                <option value="1.75">1 3/4"</option>
+                <option value="2">2"</option>
+                <option value="2.5">2 1/2"</option>
+                <option value="3">3"</option>
+                <option value="4">4"</option>
+                <option value="6">6"+</option>
+              </select>
             </div>
 
             <div data-measurement="gap">
               <label for="gapWidth">Gap Width (in)</label>
-              <input id="gapWidth" name="gapWidth" type="number" min="0" max="48" step="0.25" inputmode="decimal">
+              <select id="gapWidth" name="gapWidth">
+                <option value="">Not measured</option>
+                <option value="0.25">1/4"</option>
+                <option value="0.5">1/2"</option>
+                <option value="0.75">3/4"</option>
+                <option value="1">1"</option>
+                <option value="1.25">1 1/4"</option>
+                <option value="1.5">1 1/2"</option>
+                <option value="1.75">1 3/4"</option>
+                <option value="2">2"</option>
+                <option value="2.5">2 1/2"</option>
+                <option value="3">3"</option>
+                <option value="4">4"</option>
+                <option value="6">6"+</option>
+              </select>
             </div>
 
             <div data-measurement="obstruction">
@@ -644,9 +707,10 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-06-01-hardening-v1";
+    const APP_VERSION = "2026-06-01-field-test-fixes-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
+    const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
     const SCORE_CONFIG = {
       conditionPenalty: {
         "No Issues": 0,
@@ -704,6 +768,7 @@
       resetSavedReportsFromUrl();
       bindForm();
       bindSettings();
+      restoreContactInfo();
       updateSavedCount();
       updateUploadStatus();
       runScoring();
@@ -911,7 +976,7 @@
     }
 
     function calculateScores() {
-      const condition = field("condition").value;
+      const conditions = getSelectedConditions();
       const severity = Number(field("severity").value);
       const verticalDisplacement = numericValue("verticalDisplacement");
       const gapWidth = numericValue("gapWidth");
@@ -930,9 +995,12 @@
         : 0;
       const obstructionPenalty = obstructionType === "None" ? 0 : SCORE_CONFIG.obstructionPenalty;
       const curbRampPenalty = SCORE_CONFIG.curbRampPenalty[curbRampCondition] || 0;
+      const conditionPenalty = conditions.reduce((total, condition) => {
+        return total + (SCORE_CONFIG.conditionPenalty[condition] || 0);
+      }, 0);
 
       const gisScore = 100 -
-        (SCORE_CONFIG.conditionPenalty[condition] || 0) -
+        Math.min(55, conditionPenalty) -
         severityPenalty -
         displacementPenalty -
         gapPenalty -
@@ -983,9 +1051,65 @@
       field("priorityValue").textContent = getPriorityClass(scores.priorityScore) + " (" + scores.priorityScore + ")";
     }
 
+    function getSelectedConditions() {
+      return Array.from(field("condition").selectedOptions)
+        .map((option) => option.value || option.textContent)
+        .filter((value) => value && value !== "No Issues");
+    }
+
+    function setSelectedConditions(values) {
+      const selected = values.length ? values : ["No Issues"];
+      Array.from(field("condition").options).forEach((option) => {
+        option.selected = selected.indexOf(option.value || option.textContent) !== -1;
+      });
+    }
+
+    function conditionIncludes(value) {
+      return getSelectedConditions().indexOf(value) !== -1;
+    }
+
+    function enhanceConditionControl() {
+      const select = field("condition");
+      const segmented = document.createElement("div");
+      segmented.className = "segmented";
+      segmented.setAttribute("data-for", "condition");
+
+      Array.from(select.options).forEach((option) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "segment-button";
+        button.textContent = option.textContent;
+        button.dataset.value = option.value || option.textContent;
+        button.addEventListener("click", () => {
+          const value = button.dataset.value;
+          let selected = getSelectedConditions();
+
+          if (value === "No Issues") {
+            selected = [];
+          } else if (selected.indexOf(value) === -1) {
+            selected.push(value);
+          } else {
+            selected = selected.filter((item) => item !== value);
+          }
+
+          setSelectedConditions(selected);
+          select.dispatchEvent(new Event("input", { bubbles: true }));
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          syncSegmentedControl("condition");
+        });
+        segmented.appendChild(button);
+      });
+
+      setSelectedConditions([]);
+      select.classList.add("enhanced-select");
+      select.insertAdjacentElement("afterend", segmented);
+      syncSegmentedControl("condition");
+    }
+
     function enhanceSelectControls() {
+      enhanceConditionControl();
       [
-        "condition", "severity", "pedestrianVolume", "schoolTransitProximity",
+        "severity", "pedestrianVolume", "schoolTransitProximity",
         "adaRampNearby", "curbRampCondition", "obstructionType"
       ].forEach((id) => {
         const select = field(id);
@@ -1020,19 +1144,29 @@
       if (!segmented) return;
 
       segmented.querySelectorAll(".segment-button").forEach((button) => {
-        button.classList.toggle("active", button.dataset.value === select.value);
+        if (id === "condition") {
+          const selected = getSelectedConditions();
+          const active = button.dataset.value === "No Issues" ? selected.length === 0 : selected.indexOf(button.dataset.value) !== -1;
+          button.classList.toggle("active", active);
+        } else {
+          button.classList.toggle("active", button.dataset.value === select.value);
+        }
       });
     }
 
     function updateMeasurementVisibility() {
-      const condition = field("condition").value;
+      const hasCracking = conditionIncludes("Cracking");
+      const hasHeaving = conditionIncludes("Heaving");
+      const hasGaps = conditionIncludes("Gaps");
+      const hasObstruction = conditionIncludes("Obstruction");
+      const hasOther = conditionIncludes("Other");
       const hasAdaRamp = field("adaRampNearby").value === "Yes";
       const visible = {
-        vertical: condition === "Heaving" || condition === "Cracking" || condition === "Other",
-        gap: condition === "Gaps" || condition === "Cracking" || condition === "Other",
-        obstruction: condition === "Obstruction",
-        width: condition === "Obstruction" || hasAdaRamp,
-        ada: condition !== "No Issues",
+        vertical: hasHeaving || hasCracking || hasOther,
+        gap: hasGaps || hasCracking || hasOther,
+        obstruction: hasObstruction,
+        width: hasObstruction || hasAdaRamp,
+        ada: getSelectedConditions().length > 0,
         "curb-ramp": hasAdaRamp
       };
 
@@ -1051,7 +1185,7 @@
 
       field("measurementsSection").open = Object.values(visible).some(Boolean);
       [
-        "obstructionType", "adaRampNearby", "curbRampCondition"
+        "condition", "obstructionType", "adaRampNearby", "curbRampCondition"
       ].forEach(syncSegmentedControl);
       runScoring();
     }
@@ -1070,6 +1204,8 @@
       field("photoFirstButton").addEventListener("click", startPhotoFirst);
       field("newReportButton").addEventListener("click", startNewReport);
       field("startNewReportButton").addEventListener("click", startNewReport);
+      field("startAssessmentButton").addEventListener("click", startAssessment);
+      ["reporterName", "email"].forEach((id) => field(id).addEventListener("change", saveContactInfo));
 
       field("surveyForm").addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -1131,12 +1267,16 @@
       const hasDefaultLocation = report.latitude === defaultLat && report.longitude === defaultLng;
       const severity = Number(report.severity);
 
+      if (report.website) {
+        return { ok: false, sectionId: "conditionSection", message: "The report could not be submitted." };
+      }
+
       if (hasDefaultLocation) {
         return { ok: false, sectionId: "locationSection", message: "Use your location or place the marker before submitting." };
       }
 
-      if (report.condition === "No Issues") {
-        return { ok: false, sectionId: "conditionSection", message: "Choose an issue type before submitting." };
+      if (!getSelectedConditions().length) {
+        return { ok: false, sectionId: "conditionSection", message: "Choose at least one issue type before submitting." };
       }
 
       if (report.locationAccuracy && Number(report.locationAccuracy) > 50) {
@@ -1147,7 +1287,7 @@
         return { ok: false, sectionId: "photoSection", message: "Add a photo for poor or missing sidewalk reports." };
       }
 
-      if (report.condition === "Obstruction" && report.obstructionType === "None") {
+      if (conditionIncludes("Obstruction") && report.obstructionType === "None") {
         return { ok: false, sectionId: "measurementsSection", message: "Choose an obstruction type for obstruction reports." };
       }
 
@@ -1164,9 +1304,12 @@
     }
 
     function resetFormAfterSubmit() {
+      const contact = getSavedContactInfo();
       field("surveyForm").reset();
-      field("condition").value = "No Issues";
+      setSelectedConditions([]);
       field("severity").value = "1";
+      field("reporterName").value = contact.reporterName || "";
+      field("email").value = contact.email || "";
       [
         "condition", "severity", "pedestrianVolume", "schoolTransitProximity",
         "adaRampNearby", "curbRampCondition", "obstructionType"
@@ -1187,6 +1330,7 @@
       startNewReport();
       openSection("photoSection");
       field("photo").click();
+      window.setTimeout(() => openSection("conditionSection"), 600);
     }
 
     function openSection(sectionId) {
@@ -1195,6 +1339,36 @@
         section.open = true;
         section.scrollIntoView({ behavior: "smooth", block: "start" });
       }
+    }
+
+    function startAssessment() {
+      field("introScreen").style.display = "none";
+      field("appShell").style.display = "grid";
+      if (map) {
+        setTimeout(() => map.invalidateSize(true), 100);
+      }
+    }
+
+    function saveContactInfo() {
+      const contact = {
+        reporterName: field("reporterName").value.trim(),
+        email: field("email").value.trim()
+      };
+      localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(contact));
+    }
+
+    function getSavedContactInfo() {
+      try {
+        return JSON.parse(localStorage.getItem(CONTACT_STORAGE_KEY) || "{}");
+      } catch (error) {
+        return {};
+      }
+    }
+
+    function restoreContactInfo() {
+      const contact = getSavedContactInfo();
+      field("reporterName").value = contact.reporterName || "";
+      field("email").value = contact.email || "";
     }
 
     async function buildReport() {
@@ -1213,7 +1387,7 @@
         longitude: field("longitude").value,
         locationAccuracy: currentAccuracy ? Math.round(currentAccuracy) : "",
         address: field("address").value,
-        condition: field("condition").value,
+        condition: getSelectedConditions().join("; "),
         severity: field("severity").value,
         verticalDisplacement: field("verticalDisplacement").value,
         gapWidth: field("gapWidth").value,

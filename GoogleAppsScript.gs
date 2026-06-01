@@ -52,50 +52,50 @@ function handleReportUpload(data) {
   const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
   const sheet = ss.getSheetByName(getRequiredProperty("SHEET_NAME")) || ss.getSheets()[0];
 
-  sheet.appendRow([
-    data.reportId,
-    data.submittedAt,
-    data.reporterName,
-    data.email,
-    data.latitude,
-    data.longitude,
-    data.locationAccuracy,
-    data.gpsLocked,
-    data.address,
-    data.condition,
-    data.severity,
-    data.verticalDisplacement,
-    data.gapWidth,
-    data.obstructionType,
-    data.passableWidth,
-    data.adaRampNearby,
-    data.curbRampCondition,
-    data.pedestrianVolume,
-    data.schoolTransitProximity,
-    data.comments,
-    data.photoName,
-    data.photoType,
-    data.hasPhoto ? "Photo upload pending" : "",
-    data.score,
-    data.conditionClass,
-    data.priorityScore,
-    data.priorityClass,
-    data.hasPhoto ? "Photo upload pending" : "No photo",
-    "ArcGIS pending",
-    "",
-    ""
-  ]);
+  appendObjectRow(sheet, {
+    reportId: data.reportId,
+    submittedAt: data.submittedAt,
+    reporterName: data.reporterName,
+    email: data.email,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    locationAccuracy: data.locationAccuracy,
+    gpsLocked: data.gpsLocked,
+    address: data.address,
+    condition: data.condition,
+    severity: data.severity,
+    verticalDisplacement: data.verticalDisplacement,
+    gapWidth: data.gapWidth,
+    obstructionType: data.obstructionType,
+    passableWidth: data.passableWidth,
+    adaRampNearby: data.adaRampNearby,
+    curbRampCondition: data.curbRampCondition,
+    pedestrianVolume: data.pedestrianVolume,
+    schoolTransitProximity: data.schoolTransitProximity,
+    comments: data.comments,
+    photoName: data.photoName,
+    photoType: data.photoType,
+    photoUrl: data.hasPhoto ? "Photo upload pending" : "",
+    score: data.score,
+    conditionClass: data.conditionClass,
+    priorityScore: data.priorityScore,
+    priorityClass: data.priorityClass,
+    photoStatus: data.hasPhoto ? "Photo upload pending" : "No photo",
+    arcgisStatus: "ArcGIS pending",
+    arcgisObjectId: "",
+    arcgisError: ""
+  });
 
   const rowNumber = sheet.getLastRow();
 
   try {
     const arcgisResult = addArcGISFeature(data, "");
-    sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS created");
-    sheet.getRange(rowNumber, ARCGIS_OBJECT_ID_COLUMN).setValue(arcgisResult.objectId || "");
-    sheet.getRange(rowNumber, ARCGIS_ERROR_COLUMN).setValue("");
+    setRowValue(sheet, rowNumber, "arcgisStatus", "ArcGIS created", ARCGIS_STATUS_COLUMN);
+    setRowValue(sheet, rowNumber, "arcgisObjectId", arcgisResult.objectId || "", ARCGIS_OBJECT_ID_COLUMN);
+    setRowValue(sheet, rowNumber, "arcgisError", "", ARCGIS_ERROR_COLUMN);
   } catch (arcgisErr) {
-    sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS failed");
-    sheet.getRange(rowNumber, ARCGIS_ERROR_COLUMN).setValue(arcgisErr.message);
+    setRowValue(sheet, rowNumber, "arcgisStatus", "ArcGIS failed", ARCGIS_STATUS_COLUMN);
+    setRowValue(sheet, rowNumber, "arcgisError", arcgisErr.message, ARCGIS_ERROR_COLUMN);
     console.error("ArcGIS add feature failed: " + (arcgisErr.stack || arcgisErr.message));
   }
 
@@ -114,7 +114,7 @@ function handlePhotoUpload(data) {
   }
 
   try {
-    sheet.getRange(rowNumber, PHOTO_STATUS_COLUMN).setValue("Photo upload received");
+    setRowValue(sheet, rowNumber, "photoStatus", "Photo upload received", PHOTO_STATUS_COLUMN);
 
     const folder = DriveApp.getFolderById(getRequiredProperty("PHOTO_FOLDER_ID"));
     const match = String(data.photoData || "").match(/^data:([^;]+);base64,(.+)$/);
@@ -127,14 +127,14 @@ function handlePhotoUpload(data) {
     const file = folder.createFile(Utilities.newBlob(bytes, contentType, safeName));
     const photoUrl = file.getUrl();
 
-    sheet.getRange(rowNumber, PHOTO_URL_COLUMN).setValue(photoUrl);
-    sheet.getRange(rowNumber, PHOTO_STATUS_COLUMN).setValue("Photo uploaded");
+    setRowValue(sheet, rowNumber, "photoUrl", photoUrl, PHOTO_URL_COLUMN);
+    setRowValue(sheet, rowNumber, "photoStatus", "Photo uploaded", PHOTO_STATUS_COLUMN);
 
     try {
       updateArcGISPhotoUrl(data.reportId, photoUrl);
     } catch (arcgisErr) {
-      sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS photo update failed");
-      sheet.getRange(rowNumber, ARCGIS_ERROR_COLUMN).setValue(arcgisErr.message);
+      setRowValue(sheet, rowNumber, "arcgisStatus", "ArcGIS photo update failed", ARCGIS_STATUS_COLUMN);
+      setRowValue(sheet, rowNumber, "arcgisError", arcgisErr.message, ARCGIS_ERROR_COLUMN);
       console.error("ArcGIS photo URL update failed: " + (arcgisErr.stack || arcgisErr.message));
     }
 
@@ -142,8 +142,8 @@ function handlePhotoUpload(data) {
       .createTextOutput(JSON.stringify({ ok: true, action: "photo", photoUrl: photoUrl }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
-    sheet.getRange(rowNumber, PHOTO_STATUS_COLUMN).setValue("Photo upload failed");
-    sheet.getRange(rowNumber, PHOTO_URL_COLUMN).setValue("Photo upload failed: " + err.message);
+    setRowValue(sheet, rowNumber, "photoStatus", "Photo upload failed", PHOTO_STATUS_COLUMN);
+    setRowValue(sheet, rowNumber, "photoUrl", "Photo upload failed: " + err.message, PHOTO_URL_COLUMN);
 
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, action: "photo", error: err.message }))
@@ -182,19 +182,19 @@ function retryArcGISSync(reportId) {
 
     if (existing) {
       updateArcGISPhotoUrl(reportId, photoUrl);
-      sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS updated");
-      sheet.getRange(rowNumber, ARCGIS_OBJECT_ID_COLUMN).setValue(existing.objectId);
+      setRowValue(sheet, rowNumber, "arcgisStatus", "ArcGIS updated", ARCGIS_STATUS_COLUMN);
+      setRowValue(sheet, rowNumber, "arcgisObjectId", existing.objectId, ARCGIS_OBJECT_ID_COLUMN);
     } else {
       const result = addArcGISFeature(rowData, photoUrl);
-      sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS created");
-      sheet.getRange(rowNumber, ARCGIS_OBJECT_ID_COLUMN).setValue(result.objectId || "");
+      setRowValue(sheet, rowNumber, "arcgisStatus", "ArcGIS created", ARCGIS_STATUS_COLUMN);
+      setRowValue(sheet, rowNumber, "arcgisObjectId", result.objectId || "", ARCGIS_OBJECT_ID_COLUMN);
     }
 
-    sheet.getRange(rowNumber, ARCGIS_ERROR_COLUMN).setValue("");
+    setRowValue(sheet, rowNumber, "arcgisError", "", ARCGIS_ERROR_COLUMN);
     return { ok: true, reportId: reportId };
   } catch (err) {
-    sheet.getRange(rowNumber, ARCGIS_STATUS_COLUMN).setValue("ArcGIS failed");
-    sheet.getRange(rowNumber, ARCGIS_ERROR_COLUMN).setValue(err.message);
+    setRowValue(sheet, rowNumber, "arcgisStatus", "ArcGIS failed", ARCGIS_STATUS_COLUMN);
+    setRowValue(sheet, rowNumber, "arcgisError", err.message, ARCGIS_ERROR_COLUMN);
     throw err;
   }
 }
@@ -393,6 +393,26 @@ function getReportDataFromRow(sheet, rowNumber) {
   });
 
   return data;
+}
+
+function appendObjectRow(sheet, rowObject) {
+  const headers = getSheetHeaders(sheet);
+  const row = headers.map((header) => Object.prototype.hasOwnProperty.call(rowObject, header) ? rowObject[header] : "");
+  sheet.appendRow(row);
+}
+
+function getSheetHeaders(sheet) {
+  return sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map((header) => String(header || "").trim());
+}
+
+function getColumnByHeader(sheet, headerName, fallbackColumn) {
+  const headers = getSheetHeaders(sheet);
+  const index = headers.indexOf(headerName);
+  return index === -1 ? fallbackColumn : index + 1;
+}
+
+function setRowValue(sheet, rowNumber, headerName, value, fallbackColumn) {
+  sheet.getRange(rowNumber, getColumnByHeader(sheet, headerName, fallbackColumn)).setValue(value);
 }
 
 function isSpamSubmission(data) {
