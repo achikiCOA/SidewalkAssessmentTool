@@ -1,8 +1,4 @@
-const SPREADSHEET_ID = "1vjhv8cJTGXBQ8S_e4-2MBbdXDFqGwqhSuIubEJX2NVk";
-const PHOTO_FOLDER_ID = "1x3G-tfnqcWpNOA5fkUfZ5_1VhdDzKiNn";
-const SHEET_NAME = "Sidewalk Reports";
 const PHOTO_URL_COLUMN = 23;
-const ARCGIS_LAYER_URL = "https://services2.arcgis.com/2zE4x6y8cTIstSBE/arcgis/rest/services/Sidewalk_Assessment_Reports/FeatureServer/0";
 
 function doGet() {
   return ContentService
@@ -43,8 +39,8 @@ function doPost(e) {
 }
 
 function handleReportUpload(data) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
+  const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
+  const sheet = ss.getSheetByName(getRequiredProperty("SHEET_NAME")) || ss.getSheets()[0];
 
   sheet.appendRow([
     data.reportId,
@@ -88,8 +84,8 @@ function handleReportUpload(data) {
 }
 
 function handlePhotoUpload(data) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
+  const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
+  const sheet = ss.getSheetByName(getRequiredProperty("SHEET_NAME")) || ss.getSheets()[0];
 
   const rowNumber = findReportRow(sheet, data.reportId);
   if (!rowNumber) {
@@ -99,7 +95,7 @@ function handlePhotoUpload(data) {
   try {
     sheet.getRange(rowNumber, PHOTO_URL_COLUMN).setValue("Photo upload received");
 
-    const folder = DriveApp.getFolderById(PHOTO_FOLDER_ID);
+    const folder = DriveApp.getFolderById(getRequiredProperty("PHOTO_FOLDER_ID"));
     const match = String(data.photoData || "").match(/^data:([^;]+);base64,(.+)$/);
 
     if (!match) throw new Error("Invalid photo data.");
@@ -131,7 +127,7 @@ function handlePhotoUpload(data) {
 }
 
 function authorizeDrive() {
-  const folder = DriveApp.getFolderById(PHOTO_FOLDER_ID);
+  const folder = DriveApp.getFolderById(getRequiredProperty("PHOTO_FOLDER_ID"));
   const blob = Utilities.newBlob("authorization test", "text/plain", "authorization-test.txt");
   const file = folder.createFile(blob);
   file.setTrashed(true);
@@ -161,7 +157,7 @@ function addArcGISFeature(data, photoUrl) {
     }
   };
 
-  const result = arcGISPost(ARCGIS_LAYER_URL + "/addFeatures", {
+  const result = arcGISPost(getRequiredProperty("ARCGIS_LAYER_URL") + "/addFeatures", {
     features: JSON.stringify([feature])
   });
 
@@ -181,7 +177,7 @@ function updateArcGISPhotoUrl(reportId, photoUrl) {
   const attributes = { photoUrl: photoUrl };
   attributes[objectInfo.objectIdFieldName] = objectInfo.objectId;
 
-  const result = arcGISPost(ARCGIS_LAYER_URL + "/updateFeatures", {
+  const result = arcGISPost(getRequiredProperty("ARCGIS_LAYER_URL") + "/updateFeatures", {
     features: JSON.stringify([{ attributes: attributes }])
   });
 
@@ -194,7 +190,7 @@ function updateArcGISPhotoUrl(reportId, photoUrl) {
 
 function findArcGISObject(reportId) {
   const safeReportId = String(reportId).replace(/'/g, "''");
-  const result = arcGISPost(ARCGIS_LAYER_URL + "/query", {
+  const result = arcGISPost(getRequiredProperty("ARCGIS_LAYER_URL") + "/query", {
     where: "reportId='" + safeReportId + "'",
     returnIdsOnly: "true"
   });
@@ -286,6 +282,16 @@ function getArcGISToken() {
   }
 
   return result.token;
+}
+
+function getRequiredProperty(name) {
+  const value = PropertiesService.getScriptProperties().getProperty(name);
+
+  if (!value) {
+    throw new Error("Missing Apps Script property " + name + ".");
+  }
+
+  return value;
 }
 
 function textValue(value) {
