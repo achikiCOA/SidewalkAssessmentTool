@@ -291,16 +291,17 @@ function buildArcGISAttributes(data, photoUrl) {
 }
 
 function arcGISPost(url, extraPayload) {
-  const payload = Object.assign({
+  const requestPayload = Object.assign({
     f: "json",
     token: getArcGISToken()
   }, extraPayload);
 
-  const response = UrlFetchApp.fetch(url, {
-    method: "post",
-    payload: payload,
-    muteHttpExceptions: true
-  });
+  const options = {};
+  options.method = "post";
+  options.payload = requestPayload;
+  options.muteHttpExceptions = true;
+
+  const response = UrlFetchApp.fetch(url, options);
 
   const text = response.getContentText();
   const result = JSON.parse(text);
