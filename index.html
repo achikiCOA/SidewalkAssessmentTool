@@ -284,15 +284,31 @@
       display: none;
     }
 
-    .photo-preview {
+    .photo-preview-grid {
       display: none;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .photo-preview-grid img {
       width: 100%;
-      max-height: 220px;
-      margin-top: 10px;
+      aspect-ratio: 4 / 3;
       border: 1px solid var(--line);
       border-radius: 8px;
       object-fit: cover;
       background: #f5f7fa;
+    }
+
+    .survey-nav {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .survey-nav.single {
+      grid-template-columns: 1fr;
     }
 
     .quick-actions {
@@ -479,7 +495,7 @@
   <section class="intro-screen" id="introScreen">
     <h2>Before You Start</h2>
     <ol>
-      <li>Take a photo of the sidewalk issue first.</li>
+      <li>Take one or more photos of the sidewalk issue first.</li>
       <li>Select all issue types that apply and add any measurements.</li>
       <li>Use the map to confirm the exact location, add contact information, review the photo, then submit.</li>
     </ol>
@@ -492,7 +508,7 @@
         <h2 id="surveyTitle">Survey</h2>
       </div>
 
-      <div class="message" id="formMessage">Start with a photo, then move through condition, measurements, location, contact, preview, and submit.</div>
+      <div class="message" id="formMessage">Start with photos, then move through condition, measurements, location, contact, and submit.</div>
       <div class="quick-actions">
         <button class="secondary" type="button" id="photoFirstButton">Take Photo First</button>
         <button class="secondary" type="button" id="newReportButton">New Report</button>
@@ -512,18 +528,22 @@
           <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
         </div>
 
-        <details open id="photoSection">
+        <details class="survey-section" open id="photoSection">
           <summary>1. Take Photo</summary>
           <div class="form-grid">
             <div class="full">
-              <label for="photo">Photo</label>
-              <input type="file" id="photo" name="photo" accept="image/*" capture="environment">
+              <label for="photo">Photos</label>
+              <input type="file" id="photo" name="photo" accept="image/*" capture="environment" multiple>
               <p class="help" id="photoStatus">No photo selected.</p>
+              <div class="photo-preview-grid" id="photoPreviewGrid" aria-live="polite"></div>
             </div>
+          </div>
+          <div class="survey-nav single">
+            <button type="button" data-next-section="conditionSection">Next: Condition</button>
           </div>
         </details>
 
-        <details open id="conditionSection">
+        <details class="survey-section" id="conditionSection">
           <summary>2. Condition</summary>
           <div class="form-grid">
             <div>
@@ -535,6 +555,8 @@
                 <option>Gaps</option>
                 <option>Spalling</option>
                 <option>Obstruction</option>
+                <option>Curb Ramp</option>
+                <option>Running Slope/Cross Slope</option>
                 <option>Other</option>
               </select>
             </div>
@@ -572,9 +594,13 @@
               <textarea id="comments" name="comments"></textarea>
             </div>
           </div>
+          <div class="survey-nav">
+            <button class="secondary" type="button" data-next-section="photoSection">Back</button>
+            <button type="button" data-next-section="measurementsSection">Next: Measurements</button>
+          </div>
         </details>
 
-        <details id="measurementsSection">
+        <details class="survey-section" id="measurementsSection">
           <summary>3. Measurements</summary>
           <div class="form-grid">
             <div data-measurement="vertical">
@@ -633,15 +659,6 @@
               <input id="passableWidth" name="passableWidth" type="number" min="0" max="20" step="0.25" inputmode="decimal">
             </div>
 
-            <div data-measurement="ada">
-              <label for="adaRampNearby">ADA Ramp Nearby</label>
-              <select id="adaRampNearby" name="adaRampNearby">
-                <option>No</option>
-                <option>Yes</option>
-                <option>Unknown</option>
-              </select>
-            </div>
-
             <div data-measurement="curb-ramp">
               <label for="curbRampCondition">Curb Ramp Condition</label>
               <select id="curbRampCondition" name="curbRampCondition">
@@ -652,10 +669,56 @@
                 <option>Missing/Blocked</option>
               </select>
             </div>
+
+            <div data-measurement="running-slope">
+              <label for="runningSlope">Running Slope (%)</label>
+              <select id="runningSlope" name="runningSlope">
+                <option value="">Not measured</option>
+                <option value="0">0%</option>
+                <option value="1">1%</option>
+                <option value="2">2%</option>
+                <option value="3">3%</option>
+                <option value="4">4%</option>
+                <option value="5">5%</option>
+                <option value="6">6%</option>
+                <option value="7">7%</option>
+                <option value="8">8%</option>
+                <option value="9">9%</option>
+                <option value="10">10%</option>
+                <option value="11">11%</option>
+                <option value="12">12%</option>
+                <option value="15">15%+</option>
+              </select>
+            </div>
+
+            <div data-measurement="cross-slope">
+              <label for="crossSlope">Cross Slope (%)</label>
+              <select id="crossSlope" name="crossSlope">
+                <option value="">Not measured</option>
+                <option value="0">0%</option>
+                <option value="1">1%</option>
+                <option value="2">2%</option>
+                <option value="3">3%</option>
+                <option value="4">4%</option>
+                <option value="5">5%</option>
+                <option value="6">6%</option>
+                <option value="7">7%</option>
+                <option value="8">8%</option>
+                <option value="9">9%</option>
+                <option value="10">10%</option>
+                <option value="11">11%</option>
+                <option value="12">12%</option>
+                <option value="15">15%+</option>
+              </select>
+            </div>
+          </div>
+          <div class="survey-nav">
+            <button class="secondary" type="button" data-next-section="conditionSection">Back</button>
+            <button type="button" data-next-section="locationSection">Next: Location</button>
           </div>
         </details>
 
-        <details id="locationSection">
+        <details class="survey-section" id="locationSection">
           <summary>4. Location & Coordinates</summary>
           <div class="button-row location-actions">
             <button class="secondary" type="button" id="locateButton">Use My Location</button>
@@ -708,10 +771,14 @@
               <input id="address" name="address" readonly>
             </div>
           </div>
+          <div class="survey-nav">
+            <button class="secondary" type="button" data-next-section="measurementsSection">Back</button>
+            <button type="button" data-next-section="contactSection">Next: Contact</button>
+          </div>
         </details>
 
-        <details open id="contactSection">
-          <summary>5. Contact Information</summary>
+        <details class="survey-section" id="contactSection">
+          <summary>5. Contact Information & Submit</summary>
           <div class="form-grid">
             <div>
               <label for="reporterName">Name</label>
@@ -723,19 +790,13 @@
               <input id="email" name="email" type="email" autocomplete="email">
             </div>
           </div>
-        </details>
-
-        <details open id="photoPreviewSection">
-          <summary>6. Photo Preview</summary>
-          <div class="form-grid">
-            <div class="full">
-              <img class="photo-preview" id="photoPreview" alt="Selected photo preview">
-            </div>
+          <div class="survey-nav">
+            <button class="secondary" type="button" data-next-section="locationSection">Back</button>
+            <button type="submit" id="submitButton">Submit Report</button>
           </div>
         </details>
 
         <div class="button-row">
-          <button type="submit" id="submitButton">Submit Report</button>
           <button class="secondary" type="button" id="downloadButton">Download CSV</button>
         </div>
       </form>
@@ -756,7 +817,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-06-01-field-flow-v1";
+    const APP_VERSION = "2026-06-01-survey-flow-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -768,6 +829,8 @@
         "Gaps": 40,
         "Spalling": 20,
         "Obstruction": 30,
+        "Curb Ramp": 30,
+        "Running Slope/Cross Slope": 25,
         "Other": 15
       },
       severityPenaltyStep: 7,
@@ -793,7 +856,9 @@
       priorityGapOneInch: 8,
       priorityNarrowWidth: 12,
       priorityObstruction: 8,
-      priorityAdaRampIssue: 12,
+      priorityCurbRampIssue: 12,
+      priorityRunningSlope: 10,
+      priorityCrossSlope: 12,
       priorityPedestrianHigh: 10,
       priorityPedestrianMedium: 5,
       prioritySchoolTransit: 10
@@ -808,7 +873,7 @@
     let currentAccuracy = null;
     let locationLocked = false;
     let locationConfirmed = false;
-    let photoPreviewUrl = "";
+    let photoPreviewUrls = [];
 
     const field = (id) => document.getElementById(id);
 
@@ -1079,9 +1144,10 @@
       const severity = Number(field("severity").value);
       const verticalDisplacement = numericValue("verticalDisplacement");
       const gapWidth = numericValue("gapWidth");
+      const runningSlope = numericValue("runningSlope");
+      const crossSlope = numericValue("crossSlope");
       const passableWidth = numericValue("passableWidth");
       const obstructionType = field("obstructionType").value;
-      const adaRampNearby = field("adaRampNearby").value;
       const curbRampCondition = field("curbRampCondition").value;
       const pedestrianVolume = field("pedestrianVolume").value;
       const schoolTransitProximity = field("schoolTransitProximity").value;
@@ -1094,6 +1160,8 @@
         : 0;
       const obstructionPenalty = obstructionType === "None" ? 0 : SCORE_CONFIG.obstructionPenalty;
       const curbRampPenalty = SCORE_CONFIG.curbRampPenalty[curbRampCondition] || 0;
+      const runningSlopePenalty = runningSlope > 5 ? Math.min(14, (runningSlope - 5) * 2) : 0;
+      const crossSlopePenalty = crossSlope > 2 ? Math.min(16, (crossSlope - 2) * 4) : 0;
       const conditionPenalty = conditions.reduce((total, condition) => {
         return total + (SCORE_CONFIG.conditionPenalty[condition] || 0);
       }, 0);
@@ -1105,7 +1173,9 @@
         gapPenalty -
         widthPenalty -
         obstructionPenalty -
-        curbRampPenalty;
+        curbRampPenalty -
+        runningSlopePenalty -
+        crossSlopePenalty;
 
       let priorityScore = (100 - Math.max(0, Math.min(100, gisScore))) * SCORE_CONFIG.priorityConditionWeight;
       priorityScore += severity * SCORE_CONFIG.prioritySeverityStep;
@@ -1114,7 +1184,9 @@
       priorityScore += gapWidth >= 1 ? SCORE_CONFIG.priorityGapOneInch : 0;
       priorityScore += passableWidth > 0 && passableWidth < SCORE_CONFIG.passableWidthTargetFt ? SCORE_CONFIG.priorityNarrowWidth : 0;
       priorityScore += obstructionType === "None" ? 0 : SCORE_CONFIG.priorityObstruction;
-      priorityScore += adaRampNearby === "Yes" && curbRampCondition !== "Good" && curbRampCondition !== "Not Applicable" ? SCORE_CONFIG.priorityAdaRampIssue : 0;
+      priorityScore += curbRampCondition !== "Good" && curbRampCondition !== "Not Applicable" ? SCORE_CONFIG.priorityCurbRampIssue : 0;
+      priorityScore += runningSlope > 5 ? SCORE_CONFIG.priorityRunningSlope : 0;
+      priorityScore += crossSlope > 2 ? SCORE_CONFIG.priorityCrossSlope : 0;
       priorityScore += pedestrianVolume === "High" ? SCORE_CONFIG.priorityPedestrianHigh : pedestrianVolume === "Medium" ? SCORE_CONFIG.priorityPedestrianMedium : 0;
       priorityScore += schoolTransitProximity === "Yes" ? SCORE_CONFIG.prioritySchoolTransit : 0;
 
@@ -1209,7 +1281,7 @@
       enhanceConditionControl();
       [
         "severity", "pedestrianVolume", "schoolTransitProximity",
-        "adaRampNearby", "curbRampCondition", "obstructionType"
+        "curbRampCondition", "obstructionType"
       ].forEach((id) => {
         const select = field(id);
         const segmented = document.createElement("div");
@@ -1258,15 +1330,17 @@
       const hasHeaving = conditionIncludes("Heaving");
       const hasGaps = conditionIncludes("Gaps");
       const hasObstruction = conditionIncludes("Obstruction");
+      const hasCurbRamp = conditionIncludes("Curb Ramp");
+      const hasSlope = conditionIncludes("Running Slope/Cross Slope");
       const hasOther = conditionIncludes("Other");
-      const hasAdaRamp = field("adaRampNearby").value === "Yes";
       const visible = {
         vertical: hasHeaving || hasCracking || hasOther,
         gap: hasGaps || hasCracking || hasOther,
         obstruction: hasObstruction,
-        width: hasObstruction || hasAdaRamp,
-        ada: getSelectedConditions().length > 0,
-        "curb-ramp": hasAdaRamp
+        width: hasObstruction || hasCurbRamp,
+        "curb-ramp": hasCurbRamp,
+        "running-slope": hasSlope,
+        "cross-slope": hasSlope
       };
 
       document.querySelectorAll("[data-measurement]").forEach((group) => {
@@ -1282,9 +1356,8 @@
         });
       });
 
-      field("measurementsSection").open = Object.values(visible).some(Boolean);
       [
-        "condition", "obstructionType", "adaRampNearby", "curbRampCondition"
+        "condition", "obstructionType", "curbRampCondition"
       ].forEach(syncSegmentedControl);
       runScoring();
     }
@@ -1293,12 +1366,26 @@
       enhanceSelectControls();
 
       [
-        "condition", "severity", "verticalDisplacement", "gapWidth", "obstructionType",
-        "passableWidth", "adaRampNearby", "curbRampCondition", "pedestrianVolume",
+        "condition", "severity", "verticalDisplacement", "gapWidth", "runningSlope", "crossSlope", "obstructionType",
+        "passableWidth", "curbRampCondition", "pedestrianVolume",
         "schoolTransitProximity"
       ].forEach((id) => field(id).addEventListener("input", runScoring));
-      ["condition", "adaRampNearby"].forEach((id) => field(id).addEventListener("change", updateMeasurementVisibility));
+      field("condition").addEventListener("change", updateMeasurementVisibility);
       field("photo").addEventListener("change", updatePhotoStatus);
+      document.querySelectorAll("[data-next-section]").forEach((button) => {
+        button.addEventListener("click", () => openSurveyStep(button.dataset.nextSection));
+      });
+      document.querySelectorAll(".survey-section").forEach((section) => {
+        section.addEventListener("toggle", () => {
+          if (!section.open) return;
+          document.querySelectorAll(".survey-section").forEach((other) => {
+            if (other !== section) other.open = false;
+          });
+          if (section.id === "locationSection" && map) {
+            setTimeout(() => map.invalidateSize(true), 80);
+          }
+        });
+      });
       field("downloadButton").addEventListener("click", downloadCsv);
       field("photoFirstButton").addEventListener("click", startPhotoFirst);
       field("newReportButton").addEventListener("click", startNewReport);
@@ -1415,7 +1502,7 @@
       field("email").value = contact.email || "";
       [
         "condition", "severity", "pedestrianVolume", "schoolTransitProximity",
-        "adaRampNearby", "curbRampCondition", "obstructionType"
+        "curbRampCondition", "obstructionType"
       ].forEach(syncSegmentedControl);
       updatePhotoStatus();
       updateMeasurementVisibility();
@@ -1427,18 +1514,25 @@
       field("successPanel").style.display = "none";
       field("surveyForm").style.display = "";
       field("formMessage").scrollIntoView({ behavior: "smooth", block: "start" });
-      openSection("photoSection");
-      setMessage("Start with a photo, then continue through condition, measurements, location, contact, preview, and submit.", "");
+      openSurveyStep("photoSection");
+      setMessage("Start with photos, then continue through condition, measurements, location, contact, and submit.", "");
     }
 
     function startPhotoFirst() {
       startNewReport();
-      openSection("photoSection");
+      openSurveyStep("photoSection");
       field("photo").click();
-      window.setTimeout(() => openSection("conditionSection"), 600);
     }
 
     function openSection(sectionId) {
+      openSurveyStep(sectionId);
+    }
+
+    function openSurveyStep(sectionId) {
+      document.querySelectorAll(".survey-section").forEach((section) => {
+        section.open = section.id === sectionId;
+      });
+
       const section = field(sectionId);
       if (section && "open" in section) {
         section.open = true;
@@ -1452,8 +1546,8 @@
     function startAssessment() {
       field("introScreen").style.display = "none";
       field("appShell").style.display = "grid";
-      openSection("photoSection");
-      setMessage("Take or select a photo first, then continue to condition and measurements.", "");
+      openSurveyStep("photoSection");
+      setMessage("Take or select photos first, then continue to condition and measurements.", "");
       if (map) {
         setTimeout(() => map.invalidateSize(true), 100);
       }
@@ -1483,9 +1577,16 @@
 
     async function buildReport() {
       const scores = calculateScores();
-      const photo = field("photo").files[0] || null;
-      const photoData = photo ? await fileToDataUrl(photo) : "";
-      const photoType = getDataUrlType(photoData) || (photo ? photo.type : "");
+      const photos = Array.from(field("photo").files || []);
+      const photoItems = await Promise.all(photos.map(async (photo) => {
+        const dataUrl = await fileToDataUrl(photo);
+        return {
+          name: photo.name,
+          type: getDataUrlType(dataUrl) || photo.type,
+          size: photo.size,
+          data: dataUrl
+        };
+      }));
 
       return {
         reportId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
@@ -1502,17 +1603,20 @@
         severity: field("severity").value,
         verticalDisplacement: field("verticalDisplacement").value,
         gapWidth: field("gapWidth").value,
+        runningSlope: field("runningSlope").value,
+        crossSlope: field("crossSlope").value,
         obstructionType: field("obstructionType").value,
         passableWidth: field("passableWidth").value,
-        adaRampNearby: field("adaRampNearby").value,
         curbRampCondition: field("curbRampCondition").value,
         pedestrianVolume: field("pedestrianVolume").value,
         schoolTransitProximity: field("schoolTransitProximity").value,
         comments: field("comments").value.trim(),
-        photoName: photo ? photo.name : "",
-        photoType: photoType,
-        photoSize: photo ? photo.size : 0,
-        photoData: photoData,
+        photoName: photoItems.map((photo) => photo.name).join("; "),
+        photoType: photoItems.map((photo) => photo.type).join("; "),
+        photoSize: photoItems.reduce((total, photo) => total + photo.size, 0),
+        photoCount: photoItems.length,
+        photoDataList: photoItems,
+        photoData: photoItems[0] ? photoItems[0].data : "",
         score: scores.gisScore,
         conditionClass: getClass(scores.gisScore),
         priorityScore: scores.priorityScore,
@@ -1522,26 +1626,32 @@
     }
 
     function updatePhotoStatus() {
-      const photo = field("photo").files[0] || null;
-      const preview = field("photoPreview");
+      const photos = Array.from(field("photo").files || []);
+      const previewGrid = field("photoPreviewGrid");
 
-      if (photoPreviewUrl) {
-        URL.revokeObjectURL(photoPreviewUrl);
-        photoPreviewUrl = "";
-      }
+      photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+      photoPreviewUrls = [];
+      previewGrid.innerHTML = "";
 
-      if (!photo) {
+      if (!photos.length) {
         field("photoStatus").textContent = "No photo selected.";
-        preview.removeAttribute("src");
-        preview.style.display = "none";
+        previewGrid.style.display = "none";
         return;
       }
 
-      const sizeKb = Math.max(1, Math.round(photo.size / 1024));
-      field("photoStatus").textContent = "Selected: " + photo.name + " (" + sizeKb + " KB)";
-      photoPreviewUrl = URL.createObjectURL(photo);
-      preview.src = photoPreviewUrl;
-      preview.style.display = "block";
+      const totalKb = photos.reduce((total, photo) => total + Math.max(1, Math.round(photo.size / 1024)), 0);
+      field("photoStatus").textContent = photos.length + " photo" + (photos.length === 1 ? "" : "s") + " selected (" + totalKb + " KB total)";
+
+      photos.forEach((photo) => {
+        const url = URL.createObjectURL(photo);
+        const image = document.createElement("img");
+        image.src = url;
+        image.alt = photo.name;
+        previewGrid.appendChild(image);
+        photoPreviewUrls.push(url);
+      });
+
+      previewGrid.style.display = "grid";
       openSection("conditionSection");
     }
 
@@ -1630,14 +1740,28 @@
     async function uploadGoogleReport(uploadUrl, report) {
       const metadata = Object.assign({}, report, {
         action: "report",
-        hasPhoto: Boolean(report.photoName || report.photoData),
-        photoDataLength: report.photoData ? report.photoData.length : 0,
-        photoData: ""
+        hasPhoto: Boolean(report.photoCount),
+        photoDataLength: report.photoDataList.reduce((total, photo) => total + (photo.data ? photo.data.length : 0), 0),
+        photoData: "",
+        photoDataList: []
       });
 
       await postJsonNoCors(uploadUrl, metadata);
 
-      if (report.photoData) {
+      if (report.photoDataList.length) {
+        for (let i = 0; i < report.photoDataList.length; i++) {
+          const photo = report.photoDataList[i];
+          await postJsonNoCors(uploadUrl, {
+            action: "photo",
+            reportId: report.reportId,
+            photoIndex: i + 1,
+            photoTotal: report.photoDataList.length,
+            photoName: photo.name,
+            photoType: photo.type,
+            photoData: photo.data
+          });
+        }
+      } else if (report.photoData) {
         await postJsonNoCors(uploadUrl, {
           action: "photo",
           reportId: report.reportId,
@@ -1670,7 +1794,8 @@
       const reports = getReports();
       const localReport = Object.assign({}, report, {
         photoData: "",
-        photoDataStored: Boolean(report.photoData)
+        photoDataList: [],
+        photoDataStored: Boolean(report.photoCount)
       });
 
       try {
@@ -1718,9 +1843,9 @@
       const columns = [
         "reportId", "submittedAt", "reporterName", "email", "latitude", "longitude",
         "locationAccuracy", "locationConfirmed", "gpsLocked", "address", "condition", "severity",
-        "verticalDisplacement", "gapWidth", "obstructionType", "passableWidth",
-        "adaRampNearby", "curbRampCondition", "pedestrianVolume", "schoolTransitProximity",
-        "comments", "photoName", "photoType", "score", "conditionClass",
+        "verticalDisplacement", "gapWidth", "runningSlope", "crossSlope", "obstructionType", "passableWidth",
+        "curbRampCondition", "pedestrianVolume", "schoolTransitProximity",
+        "comments", "photoName", "photoType", "photoCount", "score", "conditionClass",
         "priorityScore", "priorityClass"
       ];
 

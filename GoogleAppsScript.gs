@@ -67,9 +67,10 @@ function handleReportUpload(data) {
     severity: data.severity,
     verticalDisplacement: data.verticalDisplacement,
     gapWidth: data.gapWidth,
+    runningSlope: data.runningSlope,
+    crossSlope: data.crossSlope,
     obstructionType: data.obstructionType,
     passableWidth: data.passableWidth,
-    adaRampNearby: data.adaRampNearby,
     curbRampCondition: data.curbRampCondition,
     pedestrianVolume: data.pedestrianVolume,
     schoolTransitProximity: data.schoolTransitProximity,
@@ -115,7 +116,8 @@ function handlePhotoUpload(data) {
   }
 
   try {
-    setRowValue(sheet, rowNumber, "photoStatus", "Photo upload received", PHOTO_STATUS_COLUMN);
+    const photoLabel = data.photoTotal ? `${data.photoIndex || 1}/${data.photoTotal}` : "1/1";
+    setRowValue(sheet, rowNumber, "photoStatus", "Photo upload received " + photoLabel, PHOTO_STATUS_COLUMN);
 
     const folder = DriveApp.getFolderById(getRequiredProperty("PHOTO_FOLDER_ID"));
     const match = String(data.photoData || "").match(/^data:([^;]+);base64,(.+)$/);
@@ -124,15 +126,15 @@ function handlePhotoUpload(data) {
 
     const contentType = match[1] || "image/jpeg";
     const bytes = Utilities.base64Decode(match[2]);
-    const safeName = `${data.reportId}-${data.photoName}`.replace(/[\\/:*?"<>|]/g, "-");
+    const safeName = `${data.reportId}-${data.photoIndex || 1}-${data.photoName}`.replace(/[\\/:*?"<>|]/g, "-");
     const file = folder.createFile(Utilities.newBlob(bytes, contentType, safeName));
     const photoUrl = file.getUrl();
+    const combinedPhotoUrls = appendCellValue(sheet, rowNumber, "photoUrl", photoUrl, PHOTO_URL_COLUMN);
 
-    setRowValue(sheet, rowNumber, "photoUrl", photoUrl, PHOTO_URL_COLUMN);
-    setRowValue(sheet, rowNumber, "photoStatus", "Photo uploaded", PHOTO_STATUS_COLUMN);
+    setRowValue(sheet, rowNumber, "photoStatus", "Photo uploaded " + photoLabel, PHOTO_STATUS_COLUMN);
 
     try {
-      updateArcGISPhotoUrl(data.reportId, photoUrl);
+      updateArcGISPhotoUrl(data.reportId, combinedPhotoUrls);
     } catch (arcgisErr) {
       setRowValue(sheet, rowNumber, "arcgisStatus", "ArcGIS photo update failed", ARCGIS_STATUS_COLUMN);
       setRowValue(sheet, rowNumber, "arcgisError", arcgisErr.message, ARCGIS_ERROR_COLUMN);
@@ -278,7 +280,6 @@ function buildArcGISAttributes(data, photoUrl) {
     gapWidth: numberValue(data.gapWidth),
     obstructionType: textValue(data.obstructionType),
     passableWidth: numberValue(data.passableWidth),
-    adaRampNearby: textValue(data.adaRampNearby),
     curbRampCondition: textValue(data.curbRampCondition),
     pedestrianVolume: textValue(data.pedestrianVolume),
     schoolTransitProximity: textValue(data.schoolTransitProximity),
@@ -414,6 +415,18 @@ function getColumnByHeader(sheet, headerName, fallbackColumn) {
 
 function setRowValue(sheet, rowNumber, headerName, value, fallbackColumn) {
   sheet.getRange(rowNumber, getColumnByHeader(sheet, headerName, fallbackColumn)).setValue(value);
+}
+
+function appendCellValue(sheet, rowNumber, headerName, value, fallbackColumn) {
+  const column = getColumnByHeader(sheet, headerName, fallbackColumn);
+  const range = sheet.getRange(rowNumber, column);
+  const existing = String(range.getValue() || "").trim();
+  const combined = existing && existing.indexOf("Photo upload pending") === -1
+    ? existing + "\n" + value
+    : value;
+
+  range.setValue(combined);
+  return combined;
 }
 
 function isSpamSubmission(data) {
