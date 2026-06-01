@@ -260,6 +260,63 @@
       background: #f5f7fa;
     }
 
+    .quick-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 0 14px 12px;
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+      gap: 8px;
+    }
+
+    .segment-button {
+      min-height: 42px;
+      padding: 9px 10px;
+      border: 1px solid #c9d2df;
+      border-radius: 6px;
+      color: var(--ink);
+      background: #fff;
+      font-weight: 700;
+    }
+
+    .segment-button.active {
+      border-color: var(--accent);
+      color: #fff;
+      background: var(--accent);
+    }
+
+    .enhanced-select {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .success-panel {
+      display: none;
+      margin: 12px 14px 14px;
+      padding: 14px;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+      color: #14532d;
+      background: #f0fdf4;
+    }
+
+    .success-panel h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+    }
+
+    .success-panel p {
+      margin: 6px 0;
+      line-height: 1.35;
+    }
+
     .help {
       margin: 8px 0 0;
       color: var(--muted);
@@ -318,6 +375,7 @@
     @media (max-width: 620px) {
       .form-grid,
       .button-row,
+      .quick-actions,
       .score-grid {
         grid-template-columns: 1fr;
       }
@@ -390,9 +448,21 @@
       </div>
 
       <div class="message" id="formMessage">Tap the map or drag the marker to set the report location.</div>
+      <div class="quick-actions">
+        <button class="secondary" type="button" id="photoFirstButton">Take Photo First</button>
+        <button class="secondary" type="button" id="newReportButton">New Report</button>
+      </div>
+
+      <div class="success-panel" id="successPanel" aria-live="polite">
+        <h3>Report Sent</h3>
+        <p><strong>Report ID:</strong> <span id="successReportId">--</span></p>
+        <p><strong>Priority:</strong> <span id="successPriority">--</span></p>
+        <p><strong>GIS Score:</strong> <span id="successScore">--</span></p>
+        <button type="button" id="startNewReportButton">Start New Report</button>
+      </div>
 
       <form id="surveyForm">
-        <details open>
+        <details open id="locationSection">
           <summary>Location</summary>
           <div class="form-grid">
             <div>
@@ -413,7 +483,7 @@
           </div>
         </details>
 
-        <details open>
+        <details open id="conditionSection">
           <summary>Condition</summary>
           <div class="form-grid">
             <div>
@@ -512,7 +582,7 @@
           </div>
         </details>
 
-        <details open>
+        <details open id="photoSection">
           <summary>Photo & Contact</summary>
           <div class="form-grid">
             <div>
@@ -561,7 +631,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-05-29-mobile-ux-v1";
+    const APP_VERSION = "2026-06-01-ux-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
 
@@ -876,6 +946,47 @@
       field("priorityValue").textContent = getPriorityClass(scores.priorityScore) + " (" + scores.priorityScore + ")";
     }
 
+    function enhanceSelectControls() {
+      [
+        "condition", "severity", "pedestrianVolume", "schoolTransitProximity",
+        "adaRampNearby", "curbRampCondition", "obstructionType"
+      ].forEach((id) => {
+        const select = field(id);
+        const segmented = document.createElement("div");
+        segmented.className = "segmented";
+        segmented.setAttribute("data-for", id);
+
+        Array.from(select.options).forEach((option) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "segment-button";
+          button.textContent = option.textContent;
+          button.dataset.value = option.value || option.textContent;
+          button.addEventListener("click", () => {
+            select.value = button.dataset.value;
+            select.dispatchEvent(new Event("input", { bubbles: true }));
+            select.dispatchEvent(new Event("change", { bubbles: true }));
+            syncSegmentedControl(id);
+          });
+          segmented.appendChild(button);
+        });
+
+        select.classList.add("enhanced-select");
+        select.insertAdjacentElement("afterend", segmented);
+        syncSegmentedControl(id);
+      });
+    }
+
+    function syncSegmentedControl(id) {
+      const select = field(id);
+      const segmented = document.querySelector('[data-for="' + id + '"]');
+      if (!segmented) return;
+
+      segmented.querySelectorAll(".segment-button").forEach((button) => {
+        button.classList.toggle("active", button.dataset.value === select.value);
+      });
+    }
+
     function updateMeasurementVisibility() {
       const condition = field("condition").value;
       const hasAdaRamp = field("adaRampNearby").value === "Yes";
@@ -902,10 +1013,15 @@
       });
 
       field("measurementsSection").open = Object.values(visible).some(Boolean);
+      [
+        "obstructionType", "adaRampNearby", "curbRampCondition"
+      ].forEach(syncSegmentedControl);
       runScoring();
     }
 
     function bindForm() {
+      enhanceSelectControls();
+
       [
         "condition", "severity", "verticalDisplacement", "gapWidth", "obstructionType",
         "passableWidth", "adaRampNearby", "curbRampCondition", "pedestrianVolume",
@@ -914,6 +1030,9 @@
       ["condition", "adaRampNearby"].forEach((id) => field(id).addEventListener("change", updateMeasurementVisibility));
       field("photo").addEventListener("change", updatePhotoStatus);
       field("downloadButton").addEventListener("click", downloadCsv);
+      field("photoFirstButton").addEventListener("click", startPhotoFirst);
+      field("newReportButton").addEventListener("click", startNewReport);
+      field("startNewReportButton").addEventListener("click", startNewReport);
 
       field("surveyForm").addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -937,6 +1056,14 @@
 
       try {
         const report = await buildReport();
+        const validation = validateReport(report);
+
+        if (!validation.ok) {
+          setMessage(validation.message, "error");
+          openSection(validation.sectionId);
+          return;
+        }
+
         saveReport(report);
 
         const uploaded = await uploadReport(report);
@@ -950,17 +1077,86 @@
           setMessage("Report saved in this browser. Add the Google Apps Script or Power Automate URL to upload to a spreadsheet.", "ok");
         }
 
-        field("surveyForm").reset();
-        field("condition").value = "No Issues";
-        field("severity").value = "1";
-        updatePhotoStatus();
-        updateMeasurementVisibility();
+        showSuccess(report);
+        resetFormAfterSubmit();
         setLocation(Number(report.latitude), Number(report.longitude), false, report.locationAccuracy || null);
         runScoring();
       } catch (error) {
         setMessage(error.message || "The report could not be submitted.", "error");
       } finally {
         field("submitButton").disabled = false;
+      }
+    }
+
+    function validateReport(report) {
+      const defaultLat = DEFAULT_LOCATION.lat.toFixed(7);
+      const defaultLng = DEFAULT_LOCATION.lng.toFixed(7);
+      const hasDefaultLocation = report.latitude === defaultLat && report.longitude === defaultLng;
+      const severity = Number(report.severity);
+
+      if (hasDefaultLocation) {
+        return { ok: false, sectionId: "locationSection", message: "Use your location or place the marker before submitting." };
+      }
+
+      if (report.condition === "No Issues") {
+        return { ok: false, sectionId: "conditionSection", message: "Choose an issue type before submitting." };
+      }
+
+      if (report.locationAccuracy && Number(report.locationAccuracy) > 50) {
+        return { ok: false, sectionId: "locationSection", message: "GPS accuracy is wider than 50 m. Use My Location again or drag the marker to the issue." };
+      }
+
+      if (severity >= 3 && !report.photoName) {
+        return { ok: false, sectionId: "photoSection", message: "Add a photo for poor or missing sidewalk reports." };
+      }
+
+      if (report.condition === "Obstruction" && report.obstructionType === "None") {
+        return { ok: false, sectionId: "measurementsSection", message: "Choose an obstruction type for obstruction reports." };
+      }
+
+      return { ok: true };
+    }
+
+    function showSuccess(report) {
+      field("successReportId").textContent = report.reportId;
+      field("successPriority").textContent = report.priorityClass + " (" + report.priorityScore + ")";
+      field("successScore").textContent = report.score + " / 100 - " + report.conditionClass;
+      field("successPanel").style.display = "block";
+      field("surveyForm").style.display = "none";
+      field("successPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function resetFormAfterSubmit() {
+      field("surveyForm").reset();
+      field("condition").value = "No Issues";
+      field("severity").value = "1";
+      [
+        "condition", "severity", "pedestrianVolume", "schoolTransitProximity",
+        "adaRampNearby", "curbRampCondition", "obstructionType"
+      ].forEach(syncSegmentedControl);
+      updatePhotoStatus();
+      updateMeasurementVisibility();
+    }
+
+    function startNewReport() {
+      resetFormAfterSubmit();
+      field("successPanel").style.display = "none";
+      field("surveyForm").style.display = "";
+      field("formMessage").scrollIntoView({ behavior: "smooth", block: "start" });
+      setMessage("Tap the map, use GPS, or take a photo to begin a new report.", "");
+    }
+
+    function startPhotoFirst() {
+      startNewReport();
+      openSection("photoSection");
+      field("photo").click();
+    }
+
+    function openSection(sectionId) {
+      const section = field(sectionId);
+      if (section && "open" in section) {
+        section.open = true;
+        section.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     }
 
