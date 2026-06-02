@@ -264,6 +264,28 @@
       margin-top: 12px;
     }
 
+    .segment-tools {
+      display: none;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .segment-tools.visible {
+      display: grid;
+    }
+
+    .segment-status {
+      grid-column: 1 / -1;
+      margin: 0;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: #475467;
+      background: #f8fafc;
+      font-size: 0.88rem;
+      line-height: 1.4;
+    }
+
     button {
       min-height: 46px;
       padding: 11px 12px;
@@ -855,10 +877,27 @@
 
         <details class="survey-section" id="locationSection">
           <summary>4. Location & Coordinates</summary>
-          <p class="help">Use GPS to get close, then pan the map so the target sits on the sidewalk issue. Tap Use This Location when the target is correct.</p>
+          <p class="help">Use Point Issue for one defect. Use Sidewalk Segment for a longer section by setting a start and end point on the map.</p>
+          <div class="form-grid">
+            <div class="full">
+              <label for="reportType">Report Type</label>
+              <select id="reportType" name="reportType">
+                <option>Point Issue</option>
+                <option>Sidewalk Segment</option>
+              </select>
+            </div>
+          </div>
+          <p class="help" id="locationHelp">Use GPS to get close, then pan the map so the target sits on the sidewalk issue. Tap Use This Location when the target is correct.</p>
           <div class="button-row location-actions">
             <button class="secondary" type="button" id="locateButton">Use My Location</button>
             <button type="button" id="confirmLocationButton">Use This Location</button>
+          </div>
+
+          <div class="button-row segment-tools" id="segmentTools">
+            <button class="secondary" type="button" id="setSegmentStartButton">Set Segment Start</button>
+            <button class="secondary" type="button" id="setSegmentEndButton">Set Segment End</button>
+            <button class="secondary" type="button" id="clearSegmentButton">Clear Segment</button>
+            <p class="segment-status" id="segmentStatus">No segment points set.</p>
           </div>
 
           <div class="map-wrap">
@@ -902,6 +941,11 @@
             <div>
               <label for="longitude">Longitude</label>
               <input id="longitude" name="longitude" readonly>
+            </div>
+
+            <div>
+              <label for="segmentLengthFt">Segment Length (ft)</label>
+              <input id="segmentLengthFt" name="segmentLengthFt" readonly>
             </div>
 
             <div class="full">
@@ -955,7 +999,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-02-clean-location-target-v1";
+    const APP_VERSION = "2026-06-02-segment-mode-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -1021,6 +1065,11 @@
     let locationConfirmed = false;
     let suppressMapMoveUpdate = false;
     let photoPreviewUrls = [];
+    let segmentStart = null;
+    let segmentEnd = null;
+    let segmentLine = null;
+    let segmentStartMarker = null;
+    let segmentEndMarker = null;
 
     const field = (id) => document.getElementById(id);
 
@@ -1064,7 +1113,9 @@
         unlockLocation(false);
         suppressMapMoveUpdate = true;
         map.panTo(e.latlng);
-        setLocation(e.latlng.lat, e.latlng.lng, true, null);
+        if (!isSegmentReport()) {
+          setLocation(e.latlng.lat, e.latlng.lng, true, null);
+        }
       });
       map.on("moveend", updateLocationFromMapCenter);
       marker.on("dragend", () => {
@@ -1075,6 +1126,9 @@
 
       field("locateButton").addEventListener("click", locateUser);
       field("confirmLocationButton").addEventListener("click", confirmLocation);
+      field("setSegmentStartButton").addEventListener("click", () => setSegmentPoint("start"));
+      field("setSegmentEndButton").addEventListener("click", () => setSegmentPoint("end"));
+      field("clearSegmentButton").addEventListener("click", clearSegment);
       field("locationSection").addEventListener("toggle", () => {
         if (field("locationSection").open && map) {
           setTimeout(() => map.invalidateSize(true), 80);
@@ -1082,6 +1136,7 @@
       });
       attachResizeObserver(field("map"));
       setLocation(lat, lng, false, null);
+      updateReportTypeUI();
 
       setTimeout(() => map.invalidateSize(true), 100);
       setTimeout(() => map.invalidateSize(true), 500);
@@ -1193,8 +1248,167 @@
 
       const center = map.getCenter();
       unlockLocation(false);
+      if (isSegmentReport()) {
+        markLocationUnconfirmed();
+        setMessage("Target moved. Set the segment start or end point when it is positioned correctly.", "");
+        return;
+      }
       setLocation(center.lat, center.lng, true, null);
       setMessage("Map center updated. Tap Use This Location when the target is on the sidewalk issue.", "");
+    }
+
+    function isSegmentReport() {
+      return field("reportType") && field("reportType").value === "Sidewalk Segment";
+    }
+
+    function updateReportTypeUI() {
+      const isSegment = isSegmentReport();
+      field("segmentTools").classList.toggle("visible", isSegment);
+      field("confirmLocationButton").textContent = isSegment ? "Confirm Segment" : "Use This Location";
+      field("locationHelp").textContent = isSegment
+        ? "Pan the map target to the beginning of the bad sidewalk section and tap Set Segment Start. Then pan to the end and tap Set Segment End."
+        : "Use GPS to get close, then pan the map so the target sits on the sidewalk issue. Tap Use This Location when the target is correct.";
+
+      if (isSegment) {
+        updateSegmentPreview();
+      } else {
+        clearSegment(false);
+        markLocationUnconfirmed();
+      }
+    }
+
+    function setSegmentPoint(which) {
+      if (!map) return;
+      const center = map.getCenter();
+      const point = { lat: center.lat, lng: center.lng };
+
+      if (which === "start") {
+        segmentStart = point;
+      } else {
+        segmentEnd = point;
+      }
+
+      updateSegmentPreview();
+      const nextStep = which === "start" && !segmentEnd
+        ? "Start set. Pan to the end of the section and tap Set Segment End."
+        : "Segment point saved.";
+      setMessage(nextStep, "ok");
+    }
+
+    function clearSegment(showMessage = true) {
+      segmentStart = null;
+      segmentEnd = null;
+
+      if (segmentLine) {
+        segmentLine.remove();
+        segmentLine = null;
+      }
+
+      if (segmentStartMarker) {
+        segmentStartMarker.remove();
+        segmentStartMarker = null;
+      }
+
+      if (segmentEndMarker) {
+        segmentEndMarker.remove();
+        segmentEndMarker = null;
+      }
+
+      field("segmentLengthFt").value = "";
+      field("segmentStatus").textContent = "No segment points set.";
+      if (showMessage) setMessage("Segment points cleared.", "");
+      markLocationUnconfirmed();
+    }
+
+    function updateSegmentPreview() {
+      if (!map) return;
+
+      if (segmentLine) {
+        segmentLine.remove();
+        segmentLine = null;
+      }
+
+      if (segmentStartMarker) {
+        segmentStartMarker.remove();
+        segmentStartMarker = null;
+      }
+
+      if (segmentEndMarker) {
+        segmentEndMarker.remove();
+        segmentEndMarker = null;
+      }
+
+      if (segmentStart) {
+        segmentStartMarker = L.circleMarker([segmentStart.lat, segmentStart.lng], {
+          radius: 7,
+          color: "#0f766e",
+          weight: 2,
+          fillColor: "#0f766e",
+          fillOpacity: 0.8
+        }).addTo(map).bindTooltip("Start");
+      }
+
+      if (segmentEnd) {
+        segmentEndMarker = L.circleMarker([segmentEnd.lat, segmentEnd.lng], {
+          radius: 7,
+          color: "#b45309",
+          weight: 2,
+          fillColor: "#b45309",
+          fillOpacity: 0.8
+        }).addTo(map).bindTooltip("End");
+      }
+
+      if (segmentStart && segmentEnd) {
+        segmentLine = L.polyline([
+          [segmentStart.lat, segmentStart.lng],
+          [segmentEnd.lat, segmentEnd.lng]
+        ], {
+          color: "#0f766e",
+          weight: 5,
+          opacity: 0.85
+        }).addTo(map);
+
+        const lengthFt = calculateSegmentLengthFt(segmentStart, segmentEnd);
+        const midpoint = getSegmentMidpoint();
+        field("segmentLengthFt").value = String(Math.round(lengthFt));
+        field("segmentStatus").textContent = "Segment ready. Length: about " + Math.round(lengthFt) + " ft.";
+        field("latitude").value = midpoint.lat.toFixed(7);
+        field("longitude").value = midpoint.lng.toFixed(7);
+        if (marker) marker.setLatLng([midpoint.lat, midpoint.lng]);
+        reverseGeocode(midpoint.lat, midpoint.lng);
+        locationConfirmed = true;
+        updateLocationConfirmationStatus();
+      } else {
+        field("segmentLengthFt").value = "";
+        field("segmentStatus").textContent = segmentStart
+          ? "Start point set. Move the map target to the end point."
+          : segmentEnd
+            ? "End point set. Move the map target to the start point."
+            : "No segment points set.";
+        markLocationUnconfirmed();
+      }
+    }
+
+    function getSegmentMidpoint() {
+      if (!segmentStart || !segmentEnd) return null;
+      return {
+        lat: (segmentStart.lat + segmentEnd.lat) / 2,
+        lng: (segmentStart.lng + segmentEnd.lng) / 2
+      };
+    }
+
+    function calculateSegmentLengthFt(start, end) {
+      if (!start || !end) return 0;
+      const earthRadiusMeters = 6371000;
+      const lat1 = start.lat * Math.PI / 180;
+      const lat2 = end.lat * Math.PI / 180;
+      const deltaLat = (end.lat - start.lat) * Math.PI / 180;
+      const deltaLng = (end.lng - start.lng) * Math.PI / 180;
+      const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+        Math.cos(lat1) * Math.cos(lat2) *
+        Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+      const meters = earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return meters * 3.28084;
     }
 
     function setLocation(lat, lng, lookupAddress, accuracyMeters) {
@@ -1219,6 +1433,19 @@
       const defaultLat = DEFAULT_LOCATION.lat.toFixed(7);
       const defaultLng = DEFAULT_LOCATION.lng.toFixed(7);
 
+      if (isSegmentReport()) {
+        if (!segmentStart || !segmentEnd) {
+          setMessage("Set both the segment start and end points before confirming.", "error");
+          openSection("locationSection");
+          return;
+        }
+
+        locationConfirmed = true;
+        updateLocationConfirmationStatus();
+        setMessage("Segment confirmed. Continue through the report and submit when ready.", "ok");
+        return;
+      }
+
       if (field("latitude").value === defaultLat && field("longitude").value === defaultLng) {
         setMessage("Use GPS or pan the map target to the sidewalk issue before confirming.", "error");
         openSection("locationSection");
@@ -1242,7 +1469,7 @@
 
       status.textContent = locationConfirmed ? "Confirmed" : "Needs confirmation";
       status.className = locationConfirmed ? "location-confirmed" : "location-needs-confirmation";
-      button.textContent = locationConfirmed ? "Location Confirmed" : "Use This Location";
+      button.textContent = locationConfirmed ? "Location Confirmed" : isSegmentReport() ? "Confirm Segment" : "Use This Location";
       button.className = locationConfirmed ? "confirmed" : "secondary";
     }
 
@@ -1446,7 +1673,7 @@
     function enhanceSelectControls() {
       enhanceConditionControl();
       [
-        "severity", "pedestrianVolume", "schoolTransitProximity",
+        "reportType", "severity", "pedestrianVolume", "schoolTransitProximity",
         "curbRampCondition", "detectableWarning", "obstructionType"
       ].forEach((id) => {
         const select = field(id);
@@ -1533,10 +1760,11 @@
       enhanceSelectControls();
 
       [
-        "condition", "severity", "verticalDisplacement", "gapWidth", "runningSlope", "crossSlope", "obstructionType",
+        "reportType", "condition", "severity", "verticalDisplacement", "gapWidth", "runningSlope", "crossSlope", "obstructionType",
         "passableWidth", "curbRampCondition", "detectableWarning", "pedestrianVolume",
         "schoolTransitProximity"
       ].forEach((id) => field(id).addEventListener("input", runScoring));
+      field("reportType").addEventListener("change", updateReportTypeUI);
       field("condition").addEventListener("change", updateMeasurementVisibility);
       field("photo").addEventListener("change", updatePhotoStatus);
       document.querySelectorAll("[data-next-section]").forEach((button) => {
@@ -1627,6 +1855,10 @@
         return { ok: false, sectionId: "locationSection", message: "Use GPS or pan the map target to the sidewalk issue before submitting." };
       }
 
+      if (report.reportType === "Sidewalk Segment" && (!report.segmentStartLat || !report.segmentStartLng || !report.segmentEndLat || !report.segmentEndLng)) {
+        return { ok: false, sectionId: "locationSection", message: "Set both the segment start and end points before submitting." };
+      }
+
       if (!locationConfirmed) {
         return { ok: false, sectionId: "locationSection", message: "Confirm the marker location before submitting." };
       }
@@ -1667,9 +1899,11 @@
       field("reporterName").value = contact.reporterName || "";
       field("email").value = contact.email || "";
       [
-        "condition", "severity", "pedestrianVolume", "schoolTransitProximity",
+        "reportType", "condition", "severity", "pedestrianVolume", "schoolTransitProximity",
         "curbRampCondition", "detectableWarning", "obstructionType"
       ].forEach(syncSegmentedControl);
+      clearSegment(false);
+      updateReportTypeUI();
       updatePhotoStatus();
       updateMeasurementVisibility();
       markLocationUnconfirmed();
@@ -1744,6 +1978,8 @@
     async function buildReport() {
       const scores = calculateScores();
       const photos = Array.from(field("photo").files || []);
+      const reportType = field("reportType").value;
+      const segmentLength = segmentStart && segmentEnd ? Math.round(calculateSegmentLengthFt(segmentStart, segmentEnd)) : "";
       const photoItems = await Promise.all(photos.map(async (photo) => {
         const dataUrl = await fileToDataUrl(photo);
         return {
@@ -1760,11 +1996,17 @@
         website: field("website").value.trim(),
         reporterName: field("reporterName").value.trim(),
         email: field("email").value.trim(),
+        reportType: reportType,
         latitude: field("latitude").value,
         longitude: field("longitude").value,
         locationAccuracy: currentAccuracy ? Math.round(currentAccuracy) : "",
         locationConfirmed: locationConfirmed ? "Yes" : "No",
         address: field("address").value,
+        segmentStartLat: segmentStart ? segmentStart.lat.toFixed(7) : "",
+        segmentStartLng: segmentStart ? segmentStart.lng.toFixed(7) : "",
+        segmentEndLat: segmentEnd ? segmentEnd.lat.toFixed(7) : "",
+        segmentEndLng: segmentEnd ? segmentEnd.lng.toFixed(7) : "",
+        segmentLengthFt: segmentLength,
         condition: getSelectedConditions().join("; "),
         severity: field("severity").value,
         verticalDisplacement: field("verticalDisplacement").value,
@@ -2013,8 +2255,9 @@
       }
 
       const columns = [
-        "reportId", "submittedAt", "reporterName", "email", "latitude", "longitude",
+        "reportId", "submittedAt", "reporterName", "email", "reportType", "latitude", "longitude",
         "locationAccuracy", "locationConfirmed", "gpsLocked", "address", "condition", "severity",
+        "segmentStartLat", "segmentStartLng", "segmentEndLat", "segmentEndLng", "segmentLengthFt",
         "verticalDisplacement", "gapWidth", "runningSlope", "crossSlope", "obstructionType", "passableWidth",
         "curbRampCondition", "detectableWarning", "pedestrianVolume", "schoolTransitProximity",
         "comments", "photoName", "photoType", "photoCount", "score", "conditionClass",

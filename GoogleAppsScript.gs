@@ -3,18 +3,24 @@ const PHOTO_STATUS_COLUMN = 28;
 const ARCGIS_STATUS_COLUMN = 29;
 const ARCGIS_OBJECT_ID_COLUMN = 30;
 const ARCGIS_ERROR_COLUMN = 31;
-const BACKEND_VERSION = "2026-06-02-header-mapped-v2";
+const BACKEND_VERSION = "2026-06-02-segment-mode-v1";
 const REQUIRED_HEADERS = [
   "reportId",
   "submittedAt",
   "reporterName",
   "email",
+  "reportType",
   "latitude",
   "longitude",
   "locationAccuracy",
   "locationConfirmed",
   "gpsLocked",
   "address",
+  "segmentStartLat",
+  "segmentStartLng",
+  "segmentEndLat",
+  "segmentEndLng",
+  "segmentLengthFt",
   "condition",
   "severity",
   "verticalDisplacement",
@@ -91,12 +97,18 @@ function handleReportUpload(data) {
     submittedAt: data.submittedAt,
     reporterName: data.reporterName,
     email: data.email,
+    reportType: data.reportType,
     latitude: data.latitude,
     longitude: data.longitude,
     locationAccuracy: data.locationAccuracy,
     locationConfirmed: data.locationConfirmed,
     gpsLocked: data.gpsLocked,
     address: data.address,
+    segmentStartLat: data.segmentStartLat,
+    segmentStartLng: data.segmentStartLng,
+    segmentEndLat: data.segmentEndLat,
+    segmentEndLng: data.segmentEndLng,
+    segmentLengthFt: data.segmentLengthFt,
     condition: data.condition,
     severity: data.severity,
     verticalDisplacement: data.verticalDisplacement,
@@ -242,6 +254,10 @@ function retryArcGISSync(reportId) {
 }
 
 function addArcGISFeature(data, photoUrl) {
+  if (textValue(data.reportType) === "Sidewalk Segment") {
+    return addArcGISSegmentFeature(data, photoUrl);
+  }
+
   const lat = Number(data.latitude);
   const lng = Number(data.longitude);
 
@@ -250,7 +266,7 @@ function addArcGISFeature(data, photoUrl) {
   }
 
   const feature = {
-    attributes: buildArcGISAttributes(data, photoUrl),
+    attributes: buildArcGISAttributes(data, photoUrl, getRequiredProperty("ARCGIS_LAYER_URL")),
     geometry: {
       x: lng,
       y: lat,
@@ -269,20 +285,53 @@ function addArcGISFeature(data, photoUrl) {
   return result.addResults[0];
 }
 
+function addArcGISSegmentFeature(data, photoUrl) {
+  const startLat = Number(data.segmentStartLat);
+  const startLng = Number(data.segmentStartLng);
+  const endLat = Number(data.segmentEndLat);
+  const endLng = Number(data.segmentEndLng);
+
+  if (!Number.isFinite(startLat) || !Number.isFinite(startLng) || !Number.isFinite(endLat) || !Number.isFinite(endLng)) {
+    throw new Error("ArcGIS segment was not created because start/end coordinates were invalid.");
+  }
+
+  const segmentLayerUrl = getRequiredProperty("ARCGIS_SEGMENT_LAYER_URL");
+  const feature = {
+    attributes: buildArcGISAttributes(data, photoUrl, segmentLayerUrl),
+    geometry: {
+      paths: [[
+        [startLng, startLat],
+        [endLng, endLat]
+      ]],
+      spatialReference: { wkid: 4326 }
+    }
+  };
+
+  const result = arcGISPost(segmentLayerUrl + "/addFeatures", {
+    features: JSON.stringify([feature])
+  });
+
+  if (!result.addResults || !result.addResults[0] || !result.addResults[0].success) {
+    throw new Error("ArcGIS segment addFeatures failed: " + JSON.stringify(result));
+  }
+
+  return result.addResults[0];
+}
+
 function updateArcGISPhotoUrl(reportId, photoUrl) {
   if (!reportId || !photoUrl) return null;
 
   const objectInfo = findArcGISObject(reportId);
   if (!objectInfo) return null;
 
-  const photoUrlField = getArcGISActualFieldName("photoUrl");
+  const photoUrlField = getArcGISActualFieldName("photoUrl", objectInfo.layerUrl);
   if (!photoUrlField) return null;
 
   const attributes = {};
   attributes[photoUrlField] = photoUrl;
   attributes[objectInfo.objectIdFieldName] = objectInfo.objectId;
 
-  const result = arcGISPost(getRequiredProperty("ARCGIS_LAYER_URL") + "/updateFeatures", {
+  const result = arcGISPost(objectInfo.layerUrl + "/updateFeatures", {
     features: JSON.stringify([{ attributes: attributes }])
   });
 
@@ -294,13 +343,20 @@ function updateArcGISPhotoUrl(reportId, photoUrl) {
 }
 
 function findArcGISObject(reportId) {
+  return findArcGISObjectInLayer(reportId, getRequiredProperty("ARCGIS_LAYER_URL")) ||
+    findArcGISObjectInLayer(reportId, getOptionalProperty("ARCGIS_SEGMENT_LAYER_URL"));
+}
+
+function findArcGISObjectInLayer(reportId, layerUrl) {
+  if (!layerUrl) return null;
+
   const safeReportId = String(reportId).replace(/'/g, "''");
-  const reportIdField = getArcGISActualFieldName("reportId");
+  const reportIdField = getArcGISActualFieldName("reportId", layerUrl);
   if (!reportIdField) {
     throw new Error("ArcGIS layer is missing a reportId field.");
   }
 
-  const result = arcGISPost(getRequiredProperty("ARCGIS_LAYER_URL") + "/query", {
+  const result = arcGISPost(layerUrl + "/query", {
     where: reportIdField + "='" + safeReportId + "'",
     returnIdsOnly: "true"
   });
@@ -309,12 +365,13 @@ function findArcGISObject(reportId) {
 
   return {
     objectId: result.objectIds[result.objectIds.length - 1],
-    objectIdFieldName: result.objectIdFieldName || "OBJECTID"
+    objectIdFieldName: result.objectIdFieldName || "OBJECTID",
+    layerUrl: layerUrl
   };
 }
 
-function filterArcGISAttributes(attributes) {
-  const fieldMap = getArcGISFieldNameMap();
+function filterArcGISAttributes(attributes, layerUrl) {
+  const fieldMap = getArcGISFieldNameMap(layerUrl);
   const filtered = {};
 
   Object.keys(attributes).forEach((key) => {
@@ -327,12 +384,12 @@ function filterArcGISAttributes(attributes) {
   return filtered;
 }
 
-function getArcGISActualFieldName(fieldName) {
-  return getArcGISFieldNameMap()[canonicalHeader(fieldName)] || "";
+function getArcGISActualFieldName(fieldName, layerUrl) {
+  return getArcGISFieldNameMap(layerUrl)[canonicalHeader(fieldName)] || "";
 }
 
-function getArcGISFieldNameMap() {
-  const result = arcGISPost(getRequiredProperty("ARCGIS_LAYER_URL"), {});
+function getArcGISFieldNameMap(layerUrl) {
+  const result = arcGISPost(layerUrl, {});
   if (!result.fields || !result.fields.length) {
     throw new Error("ArcGIS layer fields could not be read.");
   }
@@ -345,18 +402,24 @@ function getArcGISFieldNameMap() {
   return fieldMap;
 }
 
-function buildArcGISAttributes(data, photoUrl) {
+function buildArcGISAttributes(data, photoUrl, layerUrl) {
   const attributes = {
     reportId: textValue(data.reportId),
     submittedAt: textValue(data.submittedAt),
     reporterName: textValue(data.reporterName),
     email: textValue(data.email),
+    reportType: textValue(data.reportType),
     latitude: numberValue(data.latitude),
     longitude: numberValue(data.longitude),
     locationAccuracy: intValue(data.locationAccuracy),
     locationConfirmed: textValue(data.locationConfirmed),
     gpsLocked: textValue(data.gpsLocked),
     address: textValue(data.address),
+    segmentStartLat: numberValue(data.segmentStartLat),
+    segmentStartLng: numberValue(data.segmentStartLng),
+    segmentEndLat: numberValue(data.segmentEndLat),
+    segmentEndLng: numberValue(data.segmentEndLng),
+    segmentLengthFt: numberValue(data.segmentLengthFt),
     condition: textValue(data.condition),
     severity: intValue(data.severity),
     verticalDisplacement: numberValue(data.verticalDisplacement),
@@ -379,7 +442,7 @@ function buildArcGISAttributes(data, photoUrl) {
     priorityClass: textValue(data.priorityClass)
   };
 
-  return filterArcGISAttributes(attributes);
+  return filterArcGISAttributes(attributes, layerUrl);
 }
 
 function arcGISPost(url, extraPayload) {
@@ -444,6 +507,10 @@ function getRequiredProperty(name) {
   }
 
   return value;
+}
+
+function getOptionalProperty(name) {
+  return PropertiesService.getScriptProperties().getProperty(name) || "";
 }
 
 function textValue(value) {
@@ -531,9 +598,15 @@ function canonicalHeader(header) {
     reportid: "reportId",
     submittedat: "submittedAt",
     reportername: "reporterName",
+    reporttype: "reportType",
     locationaccuracy: "locationAccuracy",
     locationconfirmed: "locationConfirmed",
     gpslocked: "gpsLocked",
+    segmentstartlat: "segmentStartLat",
+    segmentstartlng: "segmentStartLng",
+    segmentendlng: "segmentEndLng",
+    segmentendlat: "segmentEndLat",
+    segmentlengthft: "segmentLengthFt",
     verticaldisplacement: "verticalDisplacement",
     gapwidth: "gapWidth",
     runningslope: "runningSlope",
