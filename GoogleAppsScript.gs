@@ -3,6 +3,41 @@ const PHOTO_STATUS_COLUMN = 28;
 const ARCGIS_STATUS_COLUMN = 29;
 const ARCGIS_OBJECT_ID_COLUMN = 30;
 const ARCGIS_ERROR_COLUMN = 31;
+const REQUIRED_HEADERS = [
+  "reportId",
+  "submittedAt",
+  "reporterName",
+  "email",
+  "latitude",
+  "longitude",
+  "locationAccuracy",
+  "locationConfirmed",
+  "gpsLocked",
+  "address",
+  "condition",
+  "severity",
+  "verticalDisplacement",
+  "gapWidth",
+  "runningSlope",
+  "crossSlope",
+  "obstructionType",
+  "passableWidth",
+  "curbRampCondition",
+  "pedestrianVolume",
+  "schoolTransitProximity",
+  "comments",
+  "photoName",
+  "photoType",
+  "photoUrl",
+  "score",
+  "conditionClass",
+  "priorityScore",
+  "priorityClass",
+  "photoStatus",
+  "arcgisStatus",
+  "arcgisObjectId",
+  "arcgisError"
+];
 
 function doGet() {
   return ContentService
@@ -51,6 +86,7 @@ function handleReportUpload(data) {
 
   const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
   const sheet = ss.getSheetByName(getRequiredProperty("SHEET_NAME")) || ss.getSheets()[0];
+  ensureSheetHeaders(sheet, REQUIRED_HEADERS);
 
   appendObjectRow(sheet, {
     reportId: data.reportId,
@@ -109,6 +145,7 @@ function handleReportUpload(data) {
 function handlePhotoUpload(data) {
   const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
   const sheet = ss.getSheetByName(getRequiredProperty("SHEET_NAME")) || ss.getSheets()[0];
+  ensureSheetHeaders(sheet, REQUIRED_HEADERS);
 
   const rowNumber = findReportRow(sheet, data.reportId);
   if (!rowNumber) {
@@ -171,6 +208,7 @@ function authorizeArcGIS() {
 function retryArcGISSync(reportId) {
   const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
   const sheet = ss.getSheetByName(getRequiredProperty("SHEET_NAME")) || ss.getSheets()[0];
+  ensureSheetHeaders(sheet, REQUIRED_HEADERS);
   const rowNumber = findReportRow(sheet, reportId);
 
   if (!rowNumber) {
@@ -236,7 +274,11 @@ function updateArcGISPhotoUrl(reportId, photoUrl) {
   const objectInfo = findArcGISObject(reportId);
   if (!objectInfo) return null;
 
-  const attributes = { photoUrl: photoUrl };
+  const photoUrlField = getArcGISActualFieldName("photoUrl");
+  if (!photoUrlField) return null;
+
+  const attributes = {};
+  attributes[photoUrlField] = photoUrl;
   attributes[objectInfo.objectIdFieldName] = objectInfo.objectId;
 
   const result = arcGISPost(getRequiredProperty("ARCGIS_LAYER_URL") + "/updateFeatures", {
@@ -252,8 +294,13 @@ function updateArcGISPhotoUrl(reportId, photoUrl) {
 
 function findArcGISObject(reportId) {
   const safeReportId = String(reportId).replace(/'/g, "''");
+  const reportIdField = getArcGISActualFieldName("reportId");
+  if (!reportIdField) {
+    throw new Error("ArcGIS layer is missing a reportId field.");
+  }
+
   const result = arcGISPost(getRequiredProperty("ARCGIS_LAYER_URL") + "/query", {
-    where: "reportId='" + safeReportId + "'",
+    where: reportIdField + "='" + safeReportId + "'",
     returnIdsOnly: "true"
   });
 
@@ -265,31 +312,72 @@ function findArcGISObject(reportId) {
   };
 }
 
+function filterArcGISAttributes(attributes) {
+  const fieldMap = getArcGISFieldNameMap();
+  const filtered = {};
+
+  Object.keys(attributes).forEach((key) => {
+    const actualFieldName = fieldMap[canonicalHeader(key)];
+    if (actualFieldName) {
+      filtered[actualFieldName] = attributes[key];
+    }
+  });
+
+  return filtered;
+}
+
+function getArcGISActualFieldName(fieldName) {
+  return getArcGISFieldNameMap()[canonicalHeader(fieldName)] || "";
+}
+
+function getArcGISFieldNameMap() {
+  const result = arcGISPost(getRequiredProperty("ARCGIS_LAYER_URL"), {});
+  if (!result.fields || !result.fields.length) {
+    throw new Error("ArcGIS layer fields could not be read.");
+  }
+
+  const fieldMap = {};
+  result.fields.forEach((field) => {
+    fieldMap[canonicalHeader(field.name)] = field.name;
+  });
+
+  return fieldMap;
+}
+
 function buildArcGISAttributes(data, photoUrl) {
-  return {
+  const attributes = {
     reportId: textValue(data.reportId),
     submittedAt: textValue(data.submittedAt),
     reporterName: textValue(data.reporterName),
     email: textValue(data.email),
+    latitude: numberValue(data.latitude),
+    longitude: numberValue(data.longitude),
     locationAccuracy: intValue(data.locationAccuracy),
+    locationConfirmed: textValue(data.locationConfirmed),
     gpsLocked: textValue(data.gpsLocked),
     address: textValue(data.address),
     condition: textValue(data.condition),
     severity: intValue(data.severity),
     verticalDisplacement: numberValue(data.verticalDisplacement),
     gapWidth: numberValue(data.gapWidth),
+    runningSlope: numberValue(data.runningSlope),
+    crossSlope: numberValue(data.crossSlope),
     obstructionType: textValue(data.obstructionType),
     passableWidth: numberValue(data.passableWidth),
     curbRampCondition: textValue(data.curbRampCondition),
     pedestrianVolume: textValue(data.pedestrianVolume),
     schoolTransitProximity: textValue(data.schoolTransitProximity),
     comments: textValue(data.comments),
+    photoName: textValue(data.photoName),
+    photoType: textValue(data.photoType),
     photoUrl: textValue(photoUrl),
     score: intValue(data.score),
     conditionClass: textValue(data.conditionClass),
     priorityScore: intValue(data.priorityScore),
     priorityClass: textValue(data.priorityClass)
   };
+
+  return filterArcGISAttributes(attributes);
 }
 
 function arcGISPost(url, extraPayload) {
@@ -374,7 +462,8 @@ function findReportRow(sheet, reportId) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return 0;
 
-  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  const reportIdColumn = getColumnByHeader(sheet, "reportId", 1);
+  const ids = sheet.getRange(2, reportIdColumn, lastRow - 1, 1).getValues();
 
   for (let i = ids.length - 1; i >= 0; i--) {
     if (String(ids[i][0]) === String(reportId)) {
@@ -386,12 +475,13 @@ function findReportRow(sheet, reportId) {
 }
 
 function getReportDataFromRow(sheet, rowNumber) {
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const headers = getSheetHeaders(sheet);
   const values = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
   const data = {};
 
   headers.forEach((header, index) => {
-    if (header) data[String(header)] = values[index];
+    const canonical = canonicalHeader(header);
+    if (canonical) data[canonical] = values[index];
   });
 
   return data;
@@ -399,7 +489,10 @@ function getReportDataFromRow(sheet, rowNumber) {
 
 function appendObjectRow(sheet, rowObject) {
   const headers = getSheetHeaders(sheet);
-  const row = headers.map((header) => Object.prototype.hasOwnProperty.call(rowObject, header) ? rowObject[header] : "");
+  const row = headers.map((header) => {
+    const canonical = canonicalHeader(header);
+    return Object.prototype.hasOwnProperty.call(rowObject, canonical) ? rowObject[canonical] : "";
+  });
   sheet.appendRow(row);
 }
 
@@ -409,12 +502,58 @@ function getSheetHeaders(sheet) {
 
 function getColumnByHeader(sheet, headerName, fallbackColumn) {
   const headers = getSheetHeaders(sheet);
-  const index = headers.indexOf(headerName);
+  const canonicalName = canonicalHeader(headerName);
+  const index = headers.findIndex((header) => canonicalHeader(header) === canonicalName);
   return index === -1 ? fallbackColumn : index + 1;
 }
 
 function setRowValue(sheet, rowNumber, headerName, value, fallbackColumn) {
   sheet.getRange(rowNumber, getColumnByHeader(sheet, headerName, fallbackColumn)).setValue(value);
+}
+
+function ensureSheetHeaders(sheet, requiredHeaders) {
+  const headers = getSheetHeaders(sheet);
+  const existing = headers.map(canonicalHeader);
+  const missing = requiredHeaders.filter((header) => existing.indexOf(canonicalHeader(header)) === -1);
+
+  if (!missing.length) return;
+
+  sheet.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
+}
+
+function canonicalHeader(header) {
+  const raw = String(header || "").trim();
+  const normalized = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const aliases = {
+    reportid: "reportId",
+    submittedat: "submittedAt",
+    reportername: "reporterName",
+    locationaccuracy: "locationAccuracy",
+    locationconfirmed: "locationConfirmed",
+    gpslocked: "gpsLocked",
+    verticaldisplacement: "verticalDisplacement",
+    gapwidth: "gapWidth",
+    runningslope: "runningSlope",
+    crossslope: "crossSlope",
+    obstructiontype: "obstructionType",
+    passablewidth: "passableWidth",
+    curbrampcondition: "curbRampCondition",
+    pedestrianvolume: "pedestrianVolume",
+    schooltransitproximity: "schoolTransitProximity",
+    photoname: "photoName",
+    phototype: "photoType",
+    photourl: "photoUrl",
+    conditionclass: "conditionClass",
+    priorityscore: "priorityScore",
+    priorityclass: "priorityClass",
+    photostatus: "photoStatus",
+    arcgisstatus: "arcgisStatus",
+    arcgisobjectid: "arcgisObjectId",
+    arcgiserror: "arcgisError"
+  };
+
+  return aliases[normalized] || normalized;
 }
 
 function appendCellValue(sheet, rowNumber, headerName, value, fallbackColumn) {
