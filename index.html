@@ -660,6 +660,14 @@
                     <li>Unknown: use when proximity is not clear in the field.</li>
                   </ul>
                 </div>
+                <div>
+                  <p><strong>Detectable Warning</strong></p>
+                  <ul>
+                    <li>Present: truncated dome surface appears intact and visible.</li>
+                    <li>Missing: curb ramp lacks a detectable warning surface where one is expected.</li>
+                    <li>Damaged/Worn or Low Contrast: warning surface may not be reliably detectable.</li>
+                  </ul>
+                </div>
               </div>
               <p><strong>ADA/PROWAG quick references:</strong>
                 <a href="https://www.access-board.gov/prowag/technical.html" target="_blank" rel="noopener">PROWAG technical requirements</a>,
@@ -742,6 +750,17 @@
                 <option>Fair</option>
                 <option>Poor</option>
                 <option>Missing/Blocked</option>
+              </select>
+            </div>
+
+            <div data-measurement="detectable-warning">
+              <label for="detectableWarning">Detectable Warning</label>
+              <select id="detectableWarning" name="detectableWarning">
+                <option>Not Applicable</option>
+                <option>Present</option>
+                <option>Missing</option>
+                <option>Damaged/Worn</option>
+                <option>Low Contrast</option>
               </select>
             </div>
 
@@ -892,7 +911,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-02-remove-new-report-top-v1";
+    const APP_VERSION = "2026-06-02-curb-ramp-detectable-warning-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -924,6 +943,13 @@
         "Poor": 12,
         "Missing/Blocked": 18
       },
+      detectableWarningPenalty: {
+        "Not Applicable": 0,
+        "Present": 0,
+        "Missing": 18,
+        "Damaged/Worn": 12,
+        "Low Contrast": 8
+      },
       priorityConditionWeight: 0.65,
       prioritySeverityStep: 7,
       priorityDisplacementHalfInch: 12,
@@ -932,6 +958,7 @@
       priorityNarrowWidth: 12,
       priorityObstruction: 8,
       priorityCurbRampIssue: 12,
+      priorityDetectableWarning: 12,
       priorityRunningSlope: 10,
       priorityCrossSlope: 12,
       priorityPedestrianHigh: 10,
@@ -1225,6 +1252,7 @@
       const passableWidth = numericValue("passableWidth");
       const obstructionType = field("obstructionType").value;
       const curbRampCondition = field("curbRampCondition").value;
+      const detectableWarning = field("detectableWarning").value;
       const pedestrianVolume = field("pedestrianVolume").value;
       const schoolTransitProximity = field("schoolTransitProximity").value;
 
@@ -1236,6 +1264,7 @@
         : 0;
       const obstructionPenalty = obstructionType === "None" ? 0 : SCORE_CONFIG.obstructionPenalty;
       const curbRampPenalty = SCORE_CONFIG.curbRampPenalty[curbRampCondition] || 0;
+      const detectableWarningPenalty = SCORE_CONFIG.detectableWarningPenalty[detectableWarning] || 0;
       const runningSlopePenalty = runningSlope > 5 ? Math.min(14, (runningSlope - 5) * 2) : 0;
       const crossSlopePenalty = crossSlope > 2 ? Math.min(16, (crossSlope - 2) * 4) : 0;
       const conditionPenalty = conditions.reduce((total, condition) => {
@@ -1250,6 +1279,7 @@
         widthPenalty -
         obstructionPenalty -
         curbRampPenalty -
+        detectableWarningPenalty -
         runningSlopePenalty -
         crossSlopePenalty;
 
@@ -1261,6 +1291,7 @@
       priorityScore += passableWidth > 0 && passableWidth < SCORE_CONFIG.passableWidthTargetFt ? SCORE_CONFIG.priorityNarrowWidth : 0;
       priorityScore += obstructionType === "None" ? 0 : SCORE_CONFIG.priorityObstruction;
       priorityScore += curbRampCondition !== "Good" && curbRampCondition !== "Not Applicable" ? SCORE_CONFIG.priorityCurbRampIssue : 0;
+      priorityScore += detectableWarning !== "Present" && detectableWarning !== "Not Applicable" ? SCORE_CONFIG.priorityDetectableWarning : 0;
       priorityScore += runningSlope > 5 ? SCORE_CONFIG.priorityRunningSlope : 0;
       priorityScore += crossSlope > 2 ? SCORE_CONFIG.priorityCrossSlope : 0;
       priorityScore += pedestrianVolume === "High" ? SCORE_CONFIG.priorityPedestrianHigh : pedestrianVolume === "Medium" ? SCORE_CONFIG.priorityPedestrianMedium : 0;
@@ -1357,7 +1388,7 @@
       enhanceConditionControl();
       [
         "severity", "pedestrianVolume", "schoolTransitProximity",
-        "curbRampCondition", "obstructionType"
+        "curbRampCondition", "detectableWarning", "obstructionType"
       ].forEach((id) => {
         const select = field(id);
         const segmented = document.createElement("div");
@@ -1415,7 +1446,8 @@
         obstruction: hasObstruction,
         width: hasObstruction || hasCurbRamp,
         "curb-ramp": hasCurbRamp,
-        "running-slope": hasSlope,
+        "detectable-warning": hasCurbRamp,
+        "running-slope": hasSlope || hasCurbRamp,
         "cross-slope": hasSlope
       };
 
@@ -1433,7 +1465,7 @@
       });
 
       [
-        "condition", "obstructionType", "curbRampCondition"
+        "condition", "obstructionType", "curbRampCondition", "detectableWarning"
       ].forEach(syncSegmentedControl);
       runScoring();
     }
@@ -1443,7 +1475,7 @@
 
       [
         "condition", "severity", "verticalDisplacement", "gapWidth", "runningSlope", "crossSlope", "obstructionType",
-        "passableWidth", "curbRampCondition", "pedestrianVolume",
+        "passableWidth", "curbRampCondition", "detectableWarning", "pedestrianVolume",
         "schoolTransitProximity"
       ].forEach((id) => field(id).addEventListener("input", runScoring));
       field("condition").addEventListener("change", updateMeasurementVisibility);
@@ -1577,7 +1609,7 @@
       field("email").value = contact.email || "";
       [
         "condition", "severity", "pedestrianVolume", "schoolTransitProximity",
-        "curbRampCondition", "obstructionType"
+        "curbRampCondition", "detectableWarning", "obstructionType"
       ].forEach(syncSegmentedControl);
       updatePhotoStatus();
       updateMeasurementVisibility();
@@ -1683,6 +1715,7 @@
         obstructionType: field("obstructionType").value,
         passableWidth: field("passableWidth").value,
         curbRampCondition: field("curbRampCondition").value,
+        detectableWarning: field("detectableWarning").value,
         pedestrianVolume: field("pedestrianVolume").value,
         schoolTransitProximity: field("schoolTransitProximity").value,
         comments: field("comments").value.trim(),
@@ -1924,7 +1957,7 @@
         "reportId", "submittedAt", "reporterName", "email", "latitude", "longitude",
         "locationAccuracy", "locationConfirmed", "gpsLocked", "address", "condition", "severity",
         "verticalDisplacement", "gapWidth", "runningSlope", "crossSlope", "obstructionType", "passableWidth",
-        "curbRampCondition", "pedestrianVolume", "schoolTransitProximity",
+        "curbRampCondition", "detectableWarning", "pedestrianVolume", "schoolTransitProximity",
         "comments", "photoName", "photoType", "photoCount", "score", "conditionClass",
         "priorityScore", "priorityClass"
       ];
