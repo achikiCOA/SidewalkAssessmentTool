@@ -436,8 +436,7 @@
       background: #f8fafc;
     }
 
-    .reference-panel h3 {
-      margin: 0 0 8px;
+    .reference-panel summary {
       font-size: 0.95rem;
     }
 
@@ -634,8 +633,8 @@
               <textarea id="comments" name="comments"></textarea>
             </div>
 
-            <div class="reference-panel">
-              <h3>Field Definitions</h3>
+            <details class="reference-panel">
+              <summary>Field Definitions & References</summary>
               <div class="reference-grid">
                 <div>
                   <p><strong>Severity</strong></p>
@@ -668,8 +667,8 @@
                 <a href="https://www.access-board.gov/ada/guides/chapter-4-ramps-and-curb-ramps/" target="_blank" rel="noopener">ADA curb ramp guide</a>,
                 <a href="https://www.ada.gov/law-and-regs/design-standards/2010-stds/" target="_blank" rel="noopener">2010 ADA Standards</a>.
               </p>
-              <p>Common field checks include 48 in. minimum pedestrian access route width in PROWAG, curb ramp running slope up to 8.3%, cross slope up to 2.1%, and surface openings or vertical changes that may affect accessibility. Always verify current federal, state, and local standards before final design or enforcement.</p>
-            </div>
+              <p>Common field checks include 48 in. minimum pedestrian access route width in PROWAG, sidewalk running slope less than 5%, maximum cross slope of 2%, curb ramp running slope up to 8.3%, and surface openings or vertical changes that may affect accessibility. Always verify current federal, state, and local standards before final design or enforcement.</p>
+            </details>
           </div>
           <div class="survey-nav">
             <button class="secondary" type="button" data-next-section="photoSection">Back</button>
@@ -894,7 +893,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-02-public-cleanup-v1";
+    const APP_VERSION = "2026-06-02-collapsible-definitions-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
