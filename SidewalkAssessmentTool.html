@@ -255,9 +255,13 @@
     }
 
     .location-actions {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       flex: 1 1 360px;
       margin-top: 0;
+    }
+
+    .location-actions.hidden {
+      display: none;
     }
 
     .location-fields {
@@ -272,6 +276,7 @@
 
     .segment-tools.visible {
       display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .segment-status {
@@ -1009,15 +1014,14 @@
             </div>
           </div>
           <p class="help" id="locationHelp">Use GPS to get close, then pan the map so the target sits on the sidewalk issue. Tap Use This Location when the target is correct.</p>
-          <div class="button-row location-actions">
+          <div class="button-row location-actions" id="pointLocationActions">
             <button class="secondary" type="button" id="locateButton">Use My Location</button>
-            <button class="secondary" type="button" id="placeTargetButton">Place Target Here</button>
-            <button type="button" id="confirmLocationButton">Use This Location</button>
+            <button type="button" id="confirmLocationButton">Confirm Point</button>
           </div>
 
           <div class="button-row segment-tools" id="segmentTools">
-            <button class="secondary" type="button" id="setSegmentStartButton">Set Segment Start</button>
-            <button class="secondary" type="button" id="setSegmentEndButton">Set Segment End</button>
+            <button class="secondary" type="button" id="locateSegmentButton">Use My Location</button>
+            <button type="button" id="segmentCaptureButton">Set Start Point</button>
             <button class="secondary" type="button" id="clearSegmentButton">Clear Segment</button>
             <p class="segment-status" id="segmentStatus">No segment points set.</p>
           </div>
@@ -1131,7 +1135,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-02-field-ux-v1";
+    const APP_VERSION = "2026-06-02-location-actions-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -1260,10 +1264,9 @@
       });
 
       field("locateButton").addEventListener("click", locateUser);
-      field("placeTargetButton").addEventListener("click", placeTargetAtMapCenter);
+      field("locateSegmentButton").addEventListener("click", locateUser);
       field("confirmLocationButton").addEventListener("click", confirmLocation);
-      field("setSegmentStartButton").addEventListener("click", () => setSegmentPoint("start"));
-      field("setSegmentEndButton").addEventListener("click", () => setSegmentPoint("end"));
+      field("segmentCaptureButton").addEventListener("click", handleSegmentCapture);
       field("clearSegmentButton").addEventListener("click", clearSegment);
       field("locationSection").addEventListener("toggle", () => {
         if (field("locationSection").open && map) {
@@ -1295,7 +1298,7 @@
       }
 
       locationLocked = false;
-      field("locateButton").disabled = true;
+      setLocateButtonsDisabled(true);
       setMessage("Getting a high-accuracy GPS fix. This may take a few seconds.", "");
 
       if (locationWatchId !== null) {
@@ -1342,7 +1345,7 @@
           locationWatchId = null;
         }
 
-        field("locateButton").disabled = false;
+        setLocateButtonsDisabled(false);
 
         if (bestPosition) {
           const lat = bestPosition.coords.latitude;
@@ -1355,14 +1358,14 @@
 
     function lockLocation(accuracyMeters) {
       locationLocked = true;
-      field("locateButton").textContent = "Improve Location";
+      setLocateButtonText("Improve Location");
       markLocationUnconfirmed();
       setMessage("GPS found your location. Pan the map until the target is on the sidewalk issue, then tap Use This Location.", "ok");
     }
 
     function unlockLocation(showMessage) {
       locationLocked = false;
-      field("locateButton").textContent = "Use My Location";
+      setLocateButtonText("Use My Location");
 
       if (locationWatchId !== null) {
         navigator.geolocation.clearWatch(locationWatchId);
@@ -1372,6 +1375,16 @@
       if (showMessage) {
         setMessage("GPS lock cleared. Use My Location again or pan the map to the sidewalk issue.", "");
       }
+    }
+
+    function setLocateButtonsDisabled(disabled) {
+      field("locateButton").disabled = disabled;
+      field("locateSegmentButton").disabled = disabled;
+    }
+
+    function setLocateButtonText(text) {
+      field("locateButton").textContent = text;
+      field("locateSegmentButton").textContent = text;
     }
 
     function updateLocationFromMapCenter() {
@@ -1393,32 +1406,18 @@
       setMessage("Map center updated. Tap Use This Location when the target is on the sidewalk issue.", "");
     }
 
-    function placeTargetAtMapCenter() {
-      if (!map) return;
-
-      if (isSegmentReport()) {
-        setMessage("For segment reports, use Set Segment Start and Set Segment End to place the line.", "");
-        return;
-      }
-
-      const center = map.getCenter();
-      unlockLocation(false);
-      setLocation(center.lat, center.lng, true, null);
-      setMessage("Target placed. Tap Use This Location when it is correct.", "ok");
-      scheduleDraftSave();
-    }
-
     function isSegmentReport() {
       return field("reportType") && field("reportType").value === "Sidewalk Segment";
     }
 
     function updateReportTypeUI() {
       const isSegment = isSegmentReport();
+      field("pointLocationActions").classList.toggle("hidden", isSegment);
       field("segmentTools").classList.toggle("visible", isSegment);
-      field("confirmLocationButton").textContent = isSegment ? "Confirm Segment" : "Use This Location";
+      field("confirmLocationButton").textContent = "Confirm Point";
       field("locationHelp").textContent = isSegment
-        ? "Pan the map target to the beginning of the bad sidewalk section and tap Set Segment Start. Then pan to the end and tap Set Segment End."
-        : "Use GPS to get close, then pan the map so the target sits on the sidewalk issue. Tap Use This Location when the target is correct.";
+        ? "Use GPS to get close, then pan the map target to the start of the bad section. The main button will guide you through start, end, and confirm."
+        : "Use GPS to get close, then pan the map so the target sits on the sidewalk issue. Tap Confirm Point when it is correct.";
 
       if (isSegment) {
         updateSegmentPreview();
@@ -1426,6 +1425,21 @@
         clearSegment(false);
         markLocationUnconfirmed();
       }
+      updateSegmentCaptureButton();
+    }
+
+    function handleSegmentCapture() {
+      if (!segmentStart) {
+        setSegmentPoint("start");
+        return;
+      }
+
+      if (!segmentEnd) {
+        setSegmentPoint("end");
+        return;
+      }
+
+      confirmLocation();
     }
 
     function setSegmentPoint(which) {
@@ -1441,9 +1455,10 @@
 
       updateSegmentPreview();
       const nextStep = which === "start" && !segmentEnd
-        ? "Step 2 of 3: start set. Pan to the end of the section and tap Set Segment End."
+        ? "Step 2 of 3: start set. Pan to the end of the section and tap Set End Point."
         : "Segment point saved.";
       setMessage(nextStep, "ok");
+      updateSegmentCaptureButton();
       scheduleDraftSave();
     }
 
@@ -1468,6 +1483,7 @@
 
       field("segmentLengthFt").value = "";
       field("segmentStatus").textContent = "Step 1 of 3: set the segment start point.";
+      updateSegmentCaptureButton();
       if (showMessage) setMessage("Segment points cleared.", "");
       markLocationUnconfirmed();
       scheduleDraftSave();
@@ -1532,6 +1548,7 @@
         locationConfirmed = true;
         updateLocationConfirmationStatus();
         updateRequiredChecklist();
+        updateSegmentCaptureButton();
       } else {
         field("segmentLengthFt").value = "";
         field("segmentStatus").textContent = segmentStart
@@ -1541,7 +1558,24 @@
             : "Step 1 of 3: set the segment start point.";
         markLocationUnconfirmed();
         updateRequiredChecklist();
+        updateSegmentCaptureButton();
       }
+    }
+
+    function updateSegmentCaptureButton() {
+      const button = field("segmentCaptureButton");
+      if (!button) return;
+
+      if (!segmentStart) {
+        button.textContent = "Set Start Point";
+      } else if (!segmentEnd) {
+        button.textContent = "Set End Point";
+      } else if (!locationConfirmed) {
+        button.textContent = "Confirm Segment";
+      } else {
+        button.textContent = "Segment Confirmed";
+      }
+      button.className = locationConfirmed && segmentStart && segmentEnd ? "confirmed" : "";
     }
 
     function getSegmentMidpoint() {
@@ -1597,6 +1631,7 @@
 
         locationConfirmed = true;
         updateLocationConfirmationStatus();
+        updateSegmentCaptureButton();
         setMessage("Segment confirmed. Continue through the report and submit when ready.", "ok");
         return;
       }
@@ -1617,6 +1652,7 @@
     function markLocationUnconfirmed() {
       locationConfirmed = false;
       updateLocationConfirmationStatus();
+      updateSegmentCaptureButton();
       updateRequiredChecklist();
     }
 
@@ -1627,7 +1663,7 @@
 
       status.textContent = locationConfirmed ? "Confirmed" : "Needs confirmation";
       status.className = locationConfirmed ? "location-confirmed" : "location-needs-confirmation";
-      button.textContent = locationConfirmed ? "Location Confirmed" : isSegmentReport() ? "Confirm Segment" : "Use This Location";
+      button.textContent = locationConfirmed ? "Point Confirmed" : "Confirm Point";
       button.className = locationConfirmed ? "confirmed" : "secondary";
     }
 
