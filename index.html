@@ -376,9 +376,64 @@
 
     .quick-actions {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: 1fr 1fr;
       gap: 10px;
       padding: 0 14px 12px;
+    }
+
+    .checklist,
+    .review-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .check-item,
+    .review-item {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .check-item {
+      color: #7a4b00;
+      background: #fffbeb;
+    }
+
+    .check-item.complete {
+      color: #14532d;
+      background: #f0fdf4;
+    }
+
+    .check-item strong,
+    .review-item strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.82rem;
+    }
+
+    .check-item span,
+    .review-item span {
+      display: block;
+      color: inherit;
+      overflow-wrap: anywhere;
+      font-size: 0.94rem;
+      line-height: 1.35;
+    }
+
+    .contact-note {
+      display: none;
+      grid-column: 1 / -1;
+      margin: 0;
+      color: #047857;
+      font-size: 0.88rem;
+    }
+
+    .contact-note.visible {
+      display: block;
     }
 
     .segmented {
@@ -611,16 +666,24 @@
       </div>
 
       <div class="message" id="formMessage">Start with photos, then move through condition, measurements, location, contact, and submit.</div>
+      <div class="checklist" id="requiredChecklist" aria-live="polite"></div>
       <div class="quick-actions">
         <button class="secondary" type="button" id="photoFirstButton">Take Photo First</button>
+        <button class="secondary" type="button" id="guideButton">Guide</button>
       </div>
 
       <div class="success-panel" id="successPanel" aria-live="polite">
         <h3>Report Sent</h3>
         <p><strong>Report ID:</strong> <span id="successReportId">--</span></p>
+        <p><strong>Report Type:</strong> <span id="successReportType">--</span></p>
         <p><strong>Priority:</strong> <span id="successPriority">--</span></p>
         <p><strong>GIS Score:</strong> <span id="successScore">--</span></p>
-        <button type="button" id="startNewReportButton">Start New Report</button>
+        <p><strong>Photos:</strong> <span id="successPhotos">--</span></p>
+        <p><strong>Location:</strong> <span id="successLocation">--</span></p>
+        <div class="button-row">
+          <button type="button" id="startNearbyReportButton">Start Another Nearby</button>
+          <button class="secondary" type="button" id="startNewReportButton">Start New Report</button>
+        </div>
       </div>
 
       <form id="surveyForm">
@@ -636,6 +699,7 @@
               <label for="photo">Photos</label>
               <input type="file" id="photo" name="photo" accept="image/*" capture="environment" multiple>
               <p class="help" id="photoStatus">No photo selected.</p>
+              <p class="help" id="photoCountStatus">0 photos attached</p>
               <div class="photo-preview-grid" id="photoPreviewGrid" aria-live="polite"></div>
             </div>
           </div>
@@ -960,8 +1024,9 @@
         </details>
 
         <details class="survey-section" id="contactSection">
-          <summary>5. Contact Information & Submit</summary>
+          <summary>5. Contact Information</summary>
           <div class="form-grid">
+            <p class="contact-note" id="contactSavedNote">Using saved contact info.</p>
             <div>
               <label for="reporterName">Name</label>
               <input id="reporterName" name="reporterName" type="text" autocomplete="name">
@@ -974,6 +1039,15 @@
           </div>
           <div class="survey-nav">
             <button class="secondary" type="button" data-next-section="locationSection">Back</button>
+            <button type="button" id="reviewButton">Review Report</button>
+          </div>
+        </details>
+
+        <details class="survey-section" id="reviewSection">
+          <summary>6. Review & Submit</summary>
+          <div class="review-grid" id="reviewGrid" aria-live="polite"></div>
+          <div class="survey-nav">
+            <button class="secondary" type="button" data-next-section="contactSection">Back</button>
             <button type="submit" id="submitButton">Submit Report</button>
           </div>
         </details>
@@ -999,7 +1073,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-02-segment-mode-v1";
+    const APP_VERSION = "2026-06-02-review-ux-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -1290,7 +1364,7 @@
 
       updateSegmentPreview();
       const nextStep = which === "start" && !segmentEnd
-        ? "Start set. Pan to the end of the section and tap Set Segment End."
+        ? "Step 2 of 3: start set. Pan to the end of the section and tap Set Segment End."
         : "Segment point saved.";
       setMessage(nextStep, "ok");
     }
@@ -1315,7 +1389,7 @@
       }
 
       field("segmentLengthFt").value = "";
-      field("segmentStatus").textContent = "No segment points set.";
+      field("segmentStatus").textContent = "Step 1 of 3: set the segment start point.";
       if (showMessage) setMessage("Segment points cleared.", "");
       markLocationUnconfirmed();
     }
@@ -1371,21 +1445,23 @@
         const lengthFt = calculateSegmentLengthFt(segmentStart, segmentEnd);
         const midpoint = getSegmentMidpoint();
         field("segmentLengthFt").value = String(Math.round(lengthFt));
-        field("segmentStatus").textContent = "Segment ready. Length: about " + Math.round(lengthFt) + " ft.";
+        field("segmentStatus").textContent = "Step 3 of 3: segment ready. Length: about " + Math.round(lengthFt) + " ft. Tap Confirm Segment.";
         field("latitude").value = midpoint.lat.toFixed(7);
         field("longitude").value = midpoint.lng.toFixed(7);
         if (marker) marker.setLatLng([midpoint.lat, midpoint.lng]);
         reverseGeocode(midpoint.lat, midpoint.lng);
         locationConfirmed = true;
         updateLocationConfirmationStatus();
+        updateRequiredChecklist();
       } else {
         field("segmentLengthFt").value = "";
         field("segmentStatus").textContent = segmentStart
-          ? "Start point set. Move the map target to the end point."
+          ? "Step 2 of 3: start point set. Move the map target to the end point."
           : segmentEnd
-            ? "End point set. Move the map target to the start point."
-            : "No segment points set.";
+            ? "Step 2 of 3: end point set. Move the map target to the start point."
+            : "Step 1 of 3: set the segment start point.";
         markLocationUnconfirmed();
+        updateRequiredChecklist();
       }
     }
 
@@ -1455,11 +1531,13 @@
       locationConfirmed = true;
       updateLocationConfirmationStatus();
       setMessage("Location confirmed. Continue through the report and submit when ready.", "ok");
+      updateRequiredChecklist();
     }
 
     function markLocationUnconfirmed() {
       locationConfirmed = false;
       updateLocationConfirmationStatus();
+      updateRequiredChecklist();
     }
 
     function updateLocationConfirmationStatus() {
@@ -1783,9 +1861,17 @@
       });
       field("downloadButton").addEventListener("click", downloadCsv);
       field("photoFirstButton").addEventListener("click", startPhotoFirst);
+      field("guideButton").addEventListener("click", openGuide);
+      field("reviewButton").addEventListener("click", reviewReport);
       field("startNewReportButton").addEventListener("click", startNewReport);
+      field("startNearbyReportButton").addEventListener("click", startNearbyReport);
       field("startAssessmentButton").addEventListener("click", startAssessment);
-      ["reporterName", "email"].forEach((id) => field(id).addEventListener("change", saveContactInfo));
+      ["reporterName", "email"].forEach((id) => {
+        field(id).addEventListener("change", saveContactInfo);
+        field(id).addEventListener("input", updateContactSavedNote);
+      });
+      field("surveyForm").addEventListener("input", updateRequiredChecklist);
+      field("surveyForm").addEventListener("change", updateRequiredChecklist);
 
       field("surveyForm").addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -1793,6 +1879,7 @@
       });
 
       updateMeasurementVisibility();
+      updateRequiredChecklist();
     }
 
     function bindSettings() {
@@ -1802,6 +1889,170 @@
         updateUploadStatus();
         setMessage("Upload settings saved.", "ok");
       });
+    }
+
+    async function reviewReport() {
+      try {
+        const report = await buildReport();
+        const validation = validateReport(report);
+        populateReview(report);
+        updateRequiredChecklist(report);
+
+        if (!validation.ok) {
+          setMessage(validation.message, "error");
+          openSection(validation.sectionId);
+          return;
+        }
+
+        openSurveyStep("reviewSection");
+        setMessage("Review the report summary, then submit when it looks right.", "ok");
+      } catch (error) {
+        setMessage(error.message || "The report could not be reviewed.", "error");
+      }
+    }
+
+    function updateRequiredChecklist(report) {
+      const checklist = field("requiredChecklist");
+      if (!checklist) return;
+
+      const snapshot = report || getCurrentReportSnapshot();
+      const items = [
+        {
+          label: "Condition",
+          complete: Boolean(snapshot.condition),
+          text: snapshot.condition || "Choose at least one issue type."
+        },
+        {
+          label: "Location",
+          complete: snapshot.locationConfirmed === "Yes",
+          text: snapshot.locationConfirmed === "Yes" ? "Location confirmed." : "Confirm the map location."
+        },
+        {
+          label: "Photos",
+          complete: Number(snapshot.severity) < 3 || Boolean(snapshot.photoName),
+          text: snapshot.photoName ? snapshot.photoName : Number(snapshot.severity) >= 3 ? "Required for severe or missing reports." : "Optional for this severity."
+        },
+        {
+          label: "Contact",
+          complete: Boolean(snapshot.reporterName || snapshot.email),
+          text: snapshot.reporterName || snapshot.email ? "Contact info present." : "Name or email is recommended."
+        }
+      ];
+
+      if (snapshot.reportType === "Sidewalk Segment") {
+        items.splice(2, 0, {
+          label: "Segment",
+          complete: Boolean(snapshot.segmentStartLat && snapshot.segmentStartLng && snapshot.segmentEndLat && snapshot.segmentEndLng),
+          text: snapshot.segmentLengthFt ? "Length: about " + snapshot.segmentLengthFt + " ft." : "Set start and end points."
+        });
+      }
+
+      checklist.innerHTML = "";
+      items.forEach((item) => {
+        const div = document.createElement("div");
+        div.className = "check-item" + (item.complete ? " complete" : "");
+        div.innerHTML = "<strong>" + escapeHtml(item.label) + "</strong><span>" + escapeHtml(item.text) + "</span>";
+        checklist.appendChild(div);
+      });
+    }
+
+    function populateReview(report) {
+      const review = field("reviewGrid");
+      if (!review) return;
+
+      const locationText = report.reportType === "Sidewalk Segment"
+        ? "Segment, " + (report.segmentLengthFt || "--") + " ft"
+        : report.latitude + ", " + report.longitude;
+      const reviewItems = [
+        ["Report Type", report.reportType],
+        ["Conditions", report.condition || "--"],
+        ["Severity", severityLabel(report.severity)],
+        ["Measurements", measurementSummary(report)],
+        ["Location", locationText],
+        ["Photos", report.photoCount + " attached"],
+        ["Contact", [report.reporterName, report.email].filter(Boolean).join(" / ") || "--"],
+        ["Priority", report.priorityClass + " (" + report.priorityScore + ")"],
+        ["GIS Score", report.score + " / 100 - " + report.conditionClass]
+      ];
+
+      review.innerHTML = "";
+      reviewItems.forEach(([label, value]) => {
+        const div = document.createElement("div");
+        div.className = "review-item";
+        div.innerHTML = "<strong>" + escapeHtml(label) + "</strong><span>" + escapeHtml(value) + "</span>";
+        review.appendChild(div);
+      });
+    }
+
+    function getCurrentReportSnapshot() {
+      const scores = calculateScores();
+      const photos = Array.from(field("photo").files || []);
+      const segmentLength = segmentStart && segmentEnd ? Math.round(calculateSegmentLengthFt(segmentStart, segmentEnd)) : "";
+
+      return {
+        reporterName: field("reporterName").value.trim(),
+        email: field("email").value.trim(),
+        reportType: field("reportType").value,
+        latitude: field("latitude").value,
+        longitude: field("longitude").value,
+        locationConfirmed: locationConfirmed ? "Yes" : "No",
+        condition: getSelectedConditions().join("; "),
+        severity: field("severity").value,
+        segmentStartLat: segmentStart ? segmentStart.lat.toFixed(7) : "",
+        segmentStartLng: segmentStart ? segmentStart.lng.toFixed(7) : "",
+        segmentEndLat: segmentEnd ? segmentEnd.lat.toFixed(7) : "",
+        segmentEndLng: segmentEnd ? segmentEnd.lng.toFixed(7) : "",
+        segmentLengthFt: segmentLength,
+        photoName: photos.map((photo) => photo.name).join("; "),
+        photoCount: photos.length,
+        score: scores.gisScore,
+        conditionClass: getClass(scores.gisScore),
+        priorityScore: scores.priorityScore,
+        priorityClass: getPriorityClass(scores.priorityScore)
+      };
+    }
+
+    function measurementSummary(report) {
+      const parts = [];
+      if (report.verticalDisplacement) parts.push("Vertical: " + report.verticalDisplacement + " in");
+      if (report.gapWidth) parts.push("Gap: " + report.gapWidth + " in");
+      if (report.runningSlope) parts.push("Running slope: " + report.runningSlope + "%");
+      if (report.crossSlope) parts.push("Cross slope: " + report.crossSlope + "%");
+      if (report.passableWidth) parts.push("Width: " + report.passableWidth + " ft");
+      if (report.curbRampCondition && report.curbRampCondition !== "Not Applicable") parts.push("Curb ramp: " + report.curbRampCondition);
+      if (report.detectableWarning && report.detectableWarning !== "Not Applicable") parts.push("Detectable warning: " + report.detectableWarning);
+      return parts.length ? parts.join("; ") : "No measurements entered";
+    }
+
+    function severityLabel(value) {
+      const option = Array.from(field("severity").options).find((item) => item.value === String(value));
+      return option ? option.textContent : String(value || "--");
+    }
+
+    function openGuide() {
+      openSurveyStep("conditionSection");
+      const reference = document.querySelector(".reference-panel");
+      if (reference) {
+        reference.open = true;
+        setTimeout(() => reference.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+      }
+    }
+
+    function updateContactSavedNote() {
+      const contact = getSavedContactInfo();
+      const hasSaved = Boolean(contact.reporterName || contact.email);
+      const matches = (!contact.reporterName || field("reporterName").value === contact.reporterName) &&
+        (!contact.email || field("email").value === contact.email);
+      field("contactSavedNote").classList.toggle("visible", hasSaved && matches);
+    }
+
+    function escapeHtml(value) {
+      return String(value === undefined || value === null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
     }
 
     async function submitReport() {
@@ -1884,8 +2135,13 @@
 
     function showSuccess(report) {
       field("successReportId").textContent = report.reportId;
+      field("successReportType").textContent = report.reportType;
       field("successPriority").textContent = report.priorityClass + " (" + report.priorityScore + ")";
       field("successScore").textContent = report.score + " / 100 - " + report.conditionClass;
+      field("successPhotos").textContent = report.photoCount + " photo" + (report.photoCount === 1 ? "" : "s") + " uploaded";
+      field("successLocation").textContent = report.reportType === "Sidewalk Segment"
+        ? "Segment length about " + (report.segmentLengthFt || "--") + " ft"
+        : report.latitude + ", " + report.longitude;
       field("successPanel").style.display = "block";
       field("surveyForm").style.display = "none";
       field("successPanel").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1907,6 +2163,8 @@
       updatePhotoStatus();
       updateMeasurementVisibility();
       markLocationUnconfirmed();
+      updateContactSavedNote();
+      updateRequiredChecklist();
     }
 
     function startNewReport() {
@@ -1916,6 +2174,19 @@
       field("formMessage").scrollIntoView({ behavior: "smooth", block: "start" });
       openSurveyStep("photoSection");
       setMessage("Start with photos, then continue through condition, measurements, location, contact, and submit.", "");
+    }
+
+    function startNearbyReport() {
+      const lat = field("latitude").value;
+      const lng = field("longitude").value;
+      resetFormAfterSubmit();
+      field("successPanel").style.display = "none";
+      field("surveyForm").style.display = "";
+      if (lat && lng) {
+        setLocation(Number(lat), Number(lng), false, currentAccuracy);
+      }
+      openSurveyStep("photoSection");
+      setMessage("Starting another report near the last location.", "ok");
     }
 
     function startPhotoFirst() {
@@ -1959,6 +2230,7 @@
         email: field("email").value.trim()
       };
       localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(contact));
+      updateContactSavedNote();
     }
 
     function getSavedContactInfo() {
@@ -1973,6 +2245,7 @@
       const contact = getSavedContactInfo();
       field("reporterName").value = contact.reporterName || "";
       field("email").value = contact.email || "";
+      updateContactSavedNote();
     }
 
     async function buildReport() {
@@ -2044,12 +2317,15 @@
 
       if (!photos.length) {
         field("photoStatus").textContent = "No photo selected.";
+        field("photoCountStatus").textContent = "0 photos attached";
         previewGrid.style.display = "none";
+        updateRequiredChecklist();
         return;
       }
 
       const totalKb = photos.reduce((total, photo) => total + Math.max(1, Math.round(photo.size / 1024)), 0);
       field("photoStatus").textContent = photos.length + " photo" + (photos.length === 1 ? "" : "s") + " selected (" + totalKb + " KB total)";
+      field("photoCountStatus").textContent = photos.length + " photo" + (photos.length === 1 ? "" : "s") + " attached";
 
       photos.forEach((photo) => {
         const url = URL.createObjectURL(photo);
@@ -2061,6 +2337,7 @@
       });
 
       previewGrid.style.display = "grid";
+      updateRequiredChecklist();
       openSection("conditionSection");
     }
 
