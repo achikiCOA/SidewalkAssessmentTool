@@ -80,15 +80,10 @@ function doPost(e) {
 }
 
 function handleReportUpload(data) {
-  if (isSpamSubmission(data)) {
-    return ContentService
-      .createTextOutput(JSON.stringify({ ok: true, action: "ignored" }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-
   const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
   const sheet = ss.getSheetByName(getRequiredProperty("SHEET_NAME")) || ss.getSheets()[0];
   ensureSheetHeaders(sheet, REQUIRED_HEADERS);
+  console.log("Report upload received. reportId=" + data.reportId + ", spreadsheetId=" + ss.getId() + ", sheetName=" + sheet.getName());
 
   appendObjectRow(sheet, {
     reportId: data.reportId,
@@ -128,6 +123,7 @@ function handleReportUpload(data) {
   });
 
   const rowNumber = sheet.getLastRow();
+  console.log("Report row appended. reportId=" + data.reportId + ", rowNumber=" + rowNumber);
 
   try {
     const arcgisResult = addArcGISFeature(data, "");
@@ -572,5 +568,5 @@ function appendCellValue(sheet, rowNumber, headerName, value, fallbackColumn) {
 }
 
 function isSpamSubmission(data) {
-  return Boolean(data && data.website);
+  return false;
 }
