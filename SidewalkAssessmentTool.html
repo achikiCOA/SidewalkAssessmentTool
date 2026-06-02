@@ -517,6 +517,38 @@
       margin: 0;
     }
 
+    .report-type-help {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+
+    .type-card {
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .type-card.active {
+      border-color: var(--accent);
+      background: #ecfdf5;
+    }
+
+    .type-card strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 0.9rem;
+    }
+
+    .type-card p {
+      margin: 0;
+      color: #475467;
+      font-size: 0.86rem;
+      line-height: 1.4;
+    }
+
     .review-actions {
       display: flex;
       gap: 8px;
@@ -1097,8 +1129,18 @@
                 <option>Sidewalk Segment</option>
               </select>
             </div>
+            <div class="report-type-help">
+              <div class="type-card" id="pointTypeHelp">
+                <strong>Point Issue</strong>
+                <p>Use for one specific spot, such as a single trip hazard, blocked sidewalk, broken slab, curb ramp issue, or missing detectable warning.</p>
+              </div>
+              <div class="type-card" id="segmentTypeHelp">
+                <strong>Sidewalk Segment</strong>
+                <p>Use for a longer continuous stretch with the same general problem, such as a cracked block face, repeated heaving, narrow passage, or several damaged slabs in a row.</p>
+              </div>
+            </div>
           </div>
-          <p class="help" id="locationHelp">Point: move target to issue. Confirm point.</p>
+          <p class="help" id="locationHelp">Point issue: place the target on the exact spot and confirm point.</p>
           <div class="button-row location-actions" id="pointLocationActions">
             <button class="secondary" type="button" id="locateButton">Use My Location</button>
             <button type="button" id="confirmLocationButton">Confirm Point</button>
@@ -1223,7 +1265,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-02-guided-flow-v1";
+    const APP_VERSION = "2026-06-02-report-type-help-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -1511,10 +1553,12 @@
       const isSegment = isSegmentReport();
       field("pointLocationActions").classList.toggle("hidden", isSegment);
       field("segmentTools").classList.toggle("visible", isSegment);
+      field("pointTypeHelp").classList.toggle("active", !isSegment);
+      field("segmentTypeHelp").classList.toggle("active", isSegment);
       field("confirmLocationButton").textContent = "Confirm Point";
       field("locationHelp").textContent = isSegment
-        ? "Segment: move target to start. Set start. Move target to end. Set end."
-        : "Point: move target to issue. Confirm point.";
+        ? "Sidewalk segment: place the target at the beginning of the bad stretch, set start, then move to the end and set end."
+        : "Point issue: place the target on the exact spot and confirm point.";
 
       if (isSegment) {
         updateSegmentPreview();
@@ -2219,8 +2263,8 @@
       let actionText = currentStep.action;
       if (activeSectionId === "locationSection") {
         actionText = isSegmentReport()
-          ? "Move target to start, set start, move target to end, set end, then confirm segment."
-          : "Move target to issue, then confirm point.";
+          ? "For a sidewalk segment, capture the start and end of the bad stretch."
+          : "For a point issue, place the target on the exact spot and confirm it.";
       }
       field("nextAction").textContent = actionText;
     }
