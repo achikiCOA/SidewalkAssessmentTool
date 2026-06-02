@@ -3,7 +3,7 @@ const PHOTO_STATUS_COLUMN = 28;
 const ARCGIS_STATUS_COLUMN = 29;
 const ARCGIS_OBJECT_ID_COLUMN = 30;
 const ARCGIS_ERROR_COLUMN = 31;
-const BACKEND_VERSION = "2026-06-02-segment-mode-v1";
+const BACKEND_VERSION = "2026-06-02-field-ux-v1";
 const REQUIRED_HEADERS = [
   "reportId",
   "submittedAt",
@@ -36,6 +36,7 @@ const REQUIRED_HEADERS = [
   "comments",
   "photoName",
   "photoType",
+  "photoCaptions",
   "photoUrl",
   "score",
   "conditionClass",
@@ -124,6 +125,7 @@ function handleReportUpload(data) {
     comments: data.comments,
     photoName: data.photoName,
     photoType: data.photoType,
+    photoCaptions: data.photoCaptions,
     photoUrl: data.hasPhoto ? "Photo upload pending" : "",
     score: data.score,
     conditionClass: data.conditionClass,
@@ -435,6 +437,7 @@ function buildArcGISAttributes(data, photoUrl, layerUrl) {
     comments: textValue(data.comments),
     photoName: textValue(data.photoName),
     photoType: textValue(data.photoType),
+    photoCaptions: textValue(data.photoCaptions),
     photoUrl: textValue(photoUrl),
     score: intValue(data.score),
     conditionClass: textValue(data.conditionClass),
@@ -619,6 +622,7 @@ function canonicalHeader(header) {
     schooltransitproximity: "schoolTransitProximity",
     photoname: "photoName",
     phototype: "photoType",
+    photocaptions: "photoCaptions",
     photourl: "photoUrl",
     conditionclass: "conditionClass",
     priorityscore: "priorityScore",

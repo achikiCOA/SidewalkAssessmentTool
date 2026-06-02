@@ -255,7 +255,7 @@
     }
 
     .location-actions {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       flex: 1 1 360px;
       margin-top: 0;
     }
@@ -363,6 +363,12 @@
       background: #f5f7fa;
     }
 
+    .photo-preview-card {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+
     .survey-nav {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -434,6 +440,36 @@
 
     .contact-note.visible {
       display: block;
+    }
+
+    .draft-panel,
+    .condition-help {
+      margin: 12px 14px;
+      padding: 12px;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      color: #1e3a8a;
+      background: #eff6ff;
+      font-size: 0.9rem;
+      line-height: 1.4;
+    }
+
+    .draft-panel {
+      display: none;
+    }
+
+    .draft-panel.visible {
+      display: block;
+    }
+
+    .draft-panel p,
+    .condition-help p {
+      margin: 0 0 10px;
+    }
+
+    .condition-help {
+      grid-column: 1 / -1;
+      margin: 0;
     }
 
     .segmented {
@@ -666,6 +702,13 @@
       </div>
 
       <div class="message" id="formMessage">Start with photos, then move through condition, measurements, location, contact, and submit.</div>
+      <div class="draft-panel" id="draftPanel">
+        <p><strong>Draft found.</strong> Resume the unfinished report or start fresh.</p>
+        <div class="button-row">
+          <button type="button" id="resumeDraftButton">Resume Draft</button>
+          <button class="secondary" type="button" id="discardDraftButton">Start Fresh</button>
+        </div>
+      </div>
       <div class="checklist" id="requiredChecklist" aria-live="polite"></div>
       <div class="quick-actions">
         <button class="secondary" type="button" id="photoFirstButton">Take Photo First</button>
@@ -711,6 +754,16 @@
         <details class="survey-section" id="conditionSection">
           <summary>2. Condition</summary>
           <div class="form-grid">
+            <div class="full">
+              <label>Quick Presets</label>
+              <div class="segmented">
+                <button class="segment-button" type="button" data-preset="trip">Trip Hazard</button>
+                <button class="segment-button" type="button" data-preset="blocked">Blocked Sidewalk</button>
+                <button class="segment-button" type="button" data-preset="curb">Curb Ramp Issue</button>
+                <button class="segment-button" type="button" data-preset="segment">Long Bad Section</button>
+              </div>
+            </div>
+
             <div>
               <label for="condition">Issue Type</label>
               <select id="condition" name="condition" multiple>
@@ -724,6 +777,10 @@
                 <option>Running Slope/Cross Slope</option>
                 <option>Other</option>
               </select>
+            </div>
+
+            <div class="condition-help" id="conditionHelp">
+              <p>Select a preset or choose all issue types that apply.</p>
             </div>
 
             <div>
@@ -954,6 +1011,7 @@
           <p class="help" id="locationHelp">Use GPS to get close, then pan the map so the target sits on the sidewalk issue. Tap Use This Location when the target is correct.</p>
           <div class="button-row location-actions">
             <button class="secondary" type="button" id="locateButton">Use My Location</button>
+            <button class="secondary" type="button" id="placeTargetButton">Place Target Here</button>
             <button type="button" id="confirmLocationButton">Use This Location</button>
           </div>
 
@@ -1073,10 +1131,11 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-02-review-ux-v1";
+    const APP_VERSION = "2026-06-02-field-ux-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
+    const DRAFT_STORAGE_KEY = "sidewalkAssessmentDraft";
     const SCORE_CONFIG = {
       conditionPenalty: {
         "No Issues": 0,
@@ -1139,6 +1198,8 @@
     let locationConfirmed = false;
     let suppressMapMoveUpdate = false;
     let photoPreviewUrls = [];
+    let draftTimer = null;
+    let draftAutosaveEnabled = true;
     let segmentStart = null;
     let segmentEnd = null;
     let segmentLine = null;
@@ -1199,6 +1260,7 @@
       });
 
       field("locateButton").addEventListener("click", locateUser);
+      field("placeTargetButton").addEventListener("click", placeTargetAtMapCenter);
       field("confirmLocationButton").addEventListener("click", confirmLocation);
       field("setSegmentStartButton").addEventListener("click", () => setSegmentPoint("start"));
       field("setSegmentEndButton").addEventListener("click", () => setSegmentPoint("end"));
@@ -1331,6 +1393,21 @@
       setMessage("Map center updated. Tap Use This Location when the target is on the sidewalk issue.", "");
     }
 
+    function placeTargetAtMapCenter() {
+      if (!map) return;
+
+      if (isSegmentReport()) {
+        setMessage("For segment reports, use Set Segment Start and Set Segment End to place the line.", "");
+        return;
+      }
+
+      const center = map.getCenter();
+      unlockLocation(false);
+      setLocation(center.lat, center.lng, true, null);
+      setMessage("Target placed. Tap Use This Location when it is correct.", "ok");
+      scheduleDraftSave();
+    }
+
     function isSegmentReport() {
       return field("reportType") && field("reportType").value === "Sidewalk Segment";
     }
@@ -1367,6 +1444,7 @@
         ? "Step 2 of 3: start set. Pan to the end of the section and tap Set Segment End."
         : "Segment point saved.";
       setMessage(nextStep, "ok");
+      scheduleDraftSave();
     }
 
     function clearSegment(showMessage = true) {
@@ -1392,6 +1470,7 @@
       field("segmentStatus").textContent = "Step 1 of 3: set the segment start point.";
       if (showMessage) setMessage("Segment points cleared.", "");
       markLocationUnconfirmed();
+      scheduleDraftSave();
     }
 
     function updateSegmentPreview() {
@@ -1532,6 +1611,7 @@
       updateLocationConfirmationStatus();
       setMessage("Location confirmed. Continue through the report and submit when ready.", "ok");
       updateRequiredChecklist();
+      scheduleDraftSave();
     }
 
     function markLocationUnconfirmed() {
@@ -1710,6 +1790,82 @@
       return getSelectedConditions().indexOf(value) !== -1;
     }
 
+    function applyPreset(preset) {
+      const presets = {
+        trip: {
+          reportType: "Point Issue",
+          conditions: ["Heaving"],
+          severity: "3",
+          message: "Trip hazard preset applied."
+        },
+        blocked: {
+          reportType: "Point Issue",
+          conditions: ["Obstruction"],
+          severity: "3",
+          obstructionType: "Other",
+          message: "Blocked sidewalk preset applied."
+        },
+        curb: {
+          reportType: "Point Issue",
+          conditions: ["Curb Ramp"],
+          severity: "2",
+          curbRampCondition: "Poor",
+          detectableWarning: "Missing",
+          message: "Curb ramp issue preset applied."
+        },
+        segment: {
+          reportType: "Sidewalk Segment",
+          conditions: ["Cracking", "Heaving"],
+          severity: "2",
+          message: "Long bad section preset applied. Set the segment start and end in the location step."
+        }
+      };
+      const config = presets[preset];
+      if (!config) return;
+
+      field("reportType").value = config.reportType;
+      field("severity").value = config.severity;
+      setSelectedConditions(config.conditions);
+      if (config.obstructionType) field("obstructionType").value = config.obstructionType;
+      if (config.curbRampCondition) field("curbRampCondition").value = config.curbRampCondition;
+      if (config.detectableWarning) field("detectableWarning").value = config.detectableWarning;
+
+      [
+        "reportType", "condition", "severity", "obstructionType", "curbRampCondition", "detectableWarning"
+      ].forEach(syncSegmentedControl);
+      updateReportTypeUI();
+      updateMeasurementVisibility();
+      updateConditionHelp();
+      setMessage(config.message, "ok");
+      scheduleDraftSave();
+    }
+
+    function updateConditionHelp() {
+      const help = field("conditionHelp");
+      if (!help) return;
+
+      const conditions = getSelectedConditions();
+      if (!conditions.length) {
+        help.innerHTML = "<p>Select a preset or choose all issue types that apply.</p>";
+        return;
+      }
+
+      const guidance = {
+        Cracking: "Cracking: note the length/extent in comments and measure any related gap or displacement.",
+        Heaving: "Heaving: measure vertical displacement and add a close-up photo when it creates a trip hazard.",
+        Gaps: "Gaps: measure gap width and note whether wheels, canes, or walkers may catch.",
+        Spalling: "Spalling: photo texture and extent; use comments for drainage or surface deterioration.",
+        Obstruction: "Obstruction: choose obstruction type and estimate the remaining passable width.",
+        "Curb Ramp": "Curb Ramp: record ramp condition, detectable warning status, passable width, and running slope if measured.",
+        "Running Slope/Cross Slope": "Slope: running slope should generally be below 5% for sidewalks; cross slope should not exceed 2%.",
+        Other: "Other: describe the issue clearly in comments and attach at least one context photo."
+      };
+
+      help.innerHTML = conditions.map((condition) => {
+        return "<p>" + escapeHtml(guidance[condition] || condition) + "</p>";
+      }).join("");
+    }
+
     function enhanceConditionControl() {
       const select = field("condition");
       const segmented = document.createElement("div");
@@ -1844,7 +2000,11 @@
       ].forEach((id) => field(id).addEventListener("input", runScoring));
       field("reportType").addEventListener("change", updateReportTypeUI);
       field("condition").addEventListener("change", updateMeasurementVisibility);
+      field("condition").addEventListener("change", updateConditionHelp);
       field("photo").addEventListener("change", updatePhotoStatus);
+      document.querySelectorAll("[data-preset]").forEach((button) => {
+        button.addEventListener("click", () => applyPreset(button.dataset.preset));
+      });
       document.querySelectorAll("[data-next-section]").forEach((button) => {
         button.addEventListener("click", () => openSurveyStep(button.dataset.nextSection));
       });
@@ -1863,6 +2023,8 @@
       field("photoFirstButton").addEventListener("click", startPhotoFirst);
       field("guideButton").addEventListener("click", openGuide);
       field("reviewButton").addEventListener("click", reviewReport);
+      field("resumeDraftButton").addEventListener("click", resumeDraft);
+      field("discardDraftButton").addEventListener("click", discardDraft);
       field("startNewReportButton").addEventListener("click", startNewReport);
       field("startNearbyReportButton").addEventListener("click", startNearbyReport);
       field("startAssessmentButton").addEventListener("click", startAssessment);
@@ -1872,6 +2034,8 @@
       });
       field("surveyForm").addEventListener("input", updateRequiredChecklist);
       field("surveyForm").addEventListener("change", updateRequiredChecklist);
+      field("surveyForm").addEventListener("input", scheduleDraftSave);
+      field("surveyForm").addEventListener("change", scheduleDraftSave);
 
       field("surveyForm").addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -1879,7 +2043,9 @@
       });
 
       updateMeasurementVisibility();
+      updateConditionHelp();
       updateRequiredChecklist();
+      showDraftRecovery();
     }
 
     function bindSettings() {
@@ -1889,6 +2055,132 @@
         updateUploadStatus();
         setMessage("Upload settings saved.", "ok");
       });
+    }
+
+    function scheduleDraftSave() {
+      if (!draftAutosaveEnabled) return;
+      window.clearTimeout(draftTimer);
+      draftTimer = window.setTimeout(saveDraft, 300);
+    }
+
+    function saveDraft() {
+      if (!draftAutosaveEnabled) return;
+
+      const draft = {
+        savedAt: new Date().toISOString(),
+        reportType: field("reportType").value,
+        reporterName: field("reporterName").value.trim(),
+        email: field("email").value.trim(),
+        latitude: field("latitude").value,
+        longitude: field("longitude").value,
+        address: field("address").value,
+        currentAccuracy: currentAccuracy,
+        locationLocked: locationLocked,
+        locationConfirmed: locationConfirmed,
+        conditions: getSelectedConditions(),
+        severity: field("severity").value,
+        verticalDisplacement: field("verticalDisplacement").value,
+        gapWidth: field("gapWidth").value,
+        runningSlope: field("runningSlope").value,
+        crossSlope: field("crossSlope").value,
+        obstructionType: field("obstructionType").value,
+        passableWidth: field("passableWidth").value,
+        curbRampCondition: field("curbRampCondition").value,
+        detectableWarning: field("detectableWarning").value,
+        pedestrianVolume: field("pedestrianVolume").value,
+        schoolTransitProximity: field("schoolTransitProximity").value,
+        comments: field("comments").value.trim(),
+        photoCaptions: getPhotoCaptions(),
+        photoNames: Array.from(field("photo").files || []).map((photo) => photo.name),
+        segmentStart: segmentStart,
+        segmentEnd: segmentEnd
+      };
+
+      const hasUsefulDraft = draft.conditions.length || draft.comments || draft.photoNames.length ||
+        draft.latitude !== DEFAULT_LOCATION.lat.toFixed(7) || draft.reporterName || draft.email;
+
+      if (hasUsefulDraft) {
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+      }
+    }
+
+    function showDraftRecovery() {
+      const draft = getSavedDraft();
+      field("draftPanel").classList.toggle("visible", Boolean(draft));
+    }
+
+    function getSavedDraft() {
+      try {
+        return JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY) || "null");
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function resumeDraft() {
+      const draft = getSavedDraft();
+      if (!draft) return;
+
+      draftAutosaveEnabled = false;
+      field("reportType").value = draft.reportType || "Point Issue";
+      field("reporterName").value = draft.reporterName || "";
+      field("email").value = draft.email || "";
+      field("severity").value = draft.severity || "1";
+      field("verticalDisplacement").value = draft.verticalDisplacement || "";
+      field("gapWidth").value = draft.gapWidth || "";
+      field("runningSlope").value = draft.runningSlope || "";
+      field("crossSlope").value = draft.crossSlope || "";
+      field("obstructionType").value = draft.obstructionType || "None";
+      field("passableWidth").value = draft.passableWidth || "";
+      field("curbRampCondition").value = draft.curbRampCondition || "Not Applicable";
+      field("detectableWarning").value = draft.detectableWarning || "Not Applicable";
+      field("pedestrianVolume").value = draft.pedestrianVolume || "Low";
+      field("schoolTransitProximity").value = draft.schoolTransitProximity || "No";
+      field("comments").value = draft.comments || "";
+      setSelectedConditions(draft.conditions || []);
+      currentAccuracy = draft.currentAccuracy || null;
+      locationLocked = Boolean(draft.locationLocked);
+      locationConfirmed = Boolean(draft.locationConfirmed);
+      segmentStart = draft.segmentStart || null;
+      segmentEnd = draft.segmentEnd || null;
+
+      [
+        "reportType", "condition", "severity", "obstructionType", "curbRampCondition",
+        "detectableWarning", "pedestrianVolume", "schoolTransitProximity"
+      ].forEach(syncSegmentedControl);
+      updateReportTypeUI();
+      updateMeasurementVisibility();
+      updateConditionHelp();
+      updateContactSavedNote();
+
+      if (draft.latitude && draft.longitude) {
+        setLocation(Number(draft.latitude), Number(draft.longitude), false, currentAccuracy);
+        field("address").value = draft.address || "";
+        locationConfirmed = Boolean(draft.locationConfirmed);
+      }
+
+      if (segmentStart || segmentEnd) {
+        updateSegmentPreview();
+      } else {
+        updateLocationConfirmationStatus();
+      }
+
+      field("draftPanel").classList.remove("visible");
+      openSurveyStep("conditionSection");
+      setMessage("Draft restored. Reattach photos if needed before submitting.", "ok");
+      draftAutosaveEnabled = true;
+      scheduleDraftSave();
+    }
+
+    function discardDraft() {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      field("draftPanel").classList.remove("visible");
+      setMessage("Draft cleared. Start a fresh report when ready.", "");
+    }
+
+    function clearDraft() {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      field("draftPanel").classList.remove("visible");
     }
 
     async function reviewReport() {
@@ -1970,6 +2262,7 @@
         ["Measurements", measurementSummary(report)],
         ["Location", locationText],
         ["Photos", report.photoCount + " attached"],
+        ["Photo Captions", report.photoCaptions || "--"],
         ["Contact", [report.reporterName, report.email].filter(Boolean).join(" / ") || "--"],
         ["Priority", report.priorityClass + " (" + report.priorityScore + ")"],
         ["GIS Score", report.score + " / 100 - " + report.conditionClass]
@@ -2082,6 +2375,7 @@
         }
 
         showSuccess(report);
+        clearDraft();
         resetFormAfterSubmit();
         setLocation(Number(report.latitude), Number(report.longitude), false, report.locationAccuracy || null);
         runScoring();
@@ -2148,6 +2442,7 @@
     }
 
     function resetFormAfterSubmit() {
+      draftAutosaveEnabled = false;
       const contact = getSavedContactInfo();
       field("surveyForm").reset();
       setSelectedConditions([]);
@@ -2165,6 +2460,7 @@
       markLocationUnconfirmed();
       updateContactSavedNote();
       updateRequiredChecklist();
+      draftAutosaveEnabled = true;
     }
 
     function startNewReport() {
@@ -2179,14 +2475,19 @@
     function startNearbyReport() {
       const lat = field("latitude").value;
       const lng = field("longitude").value;
+      const reportType = field("successReportType").textContent === "Sidewalk Segment" ? "Sidewalk Segment" : field("reportType").value;
       resetFormAfterSubmit();
       field("successPanel").style.display = "none";
       field("surveyForm").style.display = "";
+      field("reportType").value = reportType;
+      syncSegmentedControl("reportType");
+      updateReportTypeUI();
       if (lat && lng) {
         setLocation(Number(lat), Number(lng), false, currentAccuracy);
       }
       openSurveyStep("photoSection");
       setMessage("Starting another report near the last location.", "ok");
+      scheduleDraftSave();
     }
 
     function startPhotoFirst() {
@@ -2253,12 +2554,13 @@
       const photos = Array.from(field("photo").files || []);
       const reportType = field("reportType").value;
       const segmentLength = segmentStart && segmentEnd ? Math.round(calculateSegmentLengthFt(segmentStart, segmentEnd)) : "";
-      const photoItems = await Promise.all(photos.map(async (photo) => {
+      const photoItems = await Promise.all(photos.map(async (photo, index) => {
         const dataUrl = await fileToDataUrl(photo);
         return {
           name: photo.name,
           type: getDataUrlType(dataUrl) || photo.type,
           size: photo.size,
+          caption: getPhotoCaption(index),
           data: dataUrl
         };
       }));
@@ -2295,6 +2597,7 @@
         comments: field("comments").value.trim(),
         photoName: photoItems.map((photo) => photo.name).join("; "),
         photoType: photoItems.map((photo) => photo.type).join("; "),
+        photoCaptions: photoItems.map((photo) => photo.caption).filter(Boolean).join("; "),
         photoSize: photoItems.reduce((total, photo) => total + photo.size, 0),
         photoCount: photoItems.length,
         photoDataList: photoItems,
@@ -2327,18 +2630,37 @@
       field("photoStatus").textContent = photos.length + " photo" + (photos.length === 1 ? "" : "s") + " selected (" + totalKb + " KB total)";
       field("photoCountStatus").textContent = photos.length + " photo" + (photos.length === 1 ? "" : "s") + " attached";
 
-      photos.forEach((photo) => {
+      photos.forEach((photo, index) => {
         const url = URL.createObjectURL(photo);
+        const card = document.createElement("div");
+        card.className = "photo-preview-card";
         const image = document.createElement("img");
         image.src = url;
         image.alt = photo.name;
-        previewGrid.appendChild(image);
+        const caption = document.createElement("input");
+        caption.type = "text";
+        caption.id = "photoCaption" + index;
+        caption.placeholder = "Optional photo caption";
+        caption.setAttribute("aria-label", "Caption for " + photo.name);
+        caption.addEventListener("input", scheduleDraftSave);
+        card.appendChild(image);
+        card.appendChild(caption);
+        previewGrid.appendChild(card);
         photoPreviewUrls.push(url);
       });
 
       previewGrid.style.display = "grid";
       updateRequiredChecklist();
       openSection("conditionSection");
+    }
+
+    function getPhotoCaption(index) {
+      const input = field("photoCaption" + index);
+      return input ? input.value.trim() : "";
+    }
+
+    function getPhotoCaptions() {
+      return Array.from(field("photo").files || []).map((photo, index) => getPhotoCaption(index));
     }
 
     function getDataUrlType(dataUrl) {
@@ -2444,6 +2766,7 @@
             photoTotal: report.photoDataList.length,
             photoName: photo.name,
             photoType: photo.type,
+            photoCaption: photo.caption,
             photoData: photo.data
           });
         }
@@ -2537,7 +2860,7 @@
         "segmentStartLat", "segmentStartLng", "segmentEndLat", "segmentEndLng", "segmentLengthFt",
         "verticalDisplacement", "gapWidth", "runningSlope", "crossSlope", "obstructionType", "passableWidth",
         "curbRampCondition", "detectableWarning", "pedestrianVolume", "schoolTransitProximity",
-        "comments", "photoName", "photoType", "photoCount", "score", "conditionClass",
+        "comments", "photoName", "photoType", "photoCaptions", "photoCount", "score", "conditionClass",
         "priorityScore", "priorityClass"
       ];
 
