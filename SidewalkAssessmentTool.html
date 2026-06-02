@@ -435,6 +435,46 @@
       line-height: 1.35;
     }
 
+    .step-progress {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 6px;
+      padding: 12px 14px 0;
+    }
+
+    .step-progress button {
+      min-height: 38px;
+      padding: 8px 6px;
+      border: 1px solid var(--line);
+      color: #475467;
+      background: #fff;
+      font-size: 0.78rem;
+      line-height: 1.1;
+    }
+
+    .step-progress button.active {
+      border-color: var(--accent);
+      color: #fff;
+      background: var(--accent);
+    }
+
+    .step-progress button.complete {
+      border-color: #bbf7d0;
+      color: #14532d;
+      background: #f0fdf4;
+    }
+
+    .next-action {
+      margin: 10px 14px 0;
+      padding: 10px 12px;
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      color: #134e4a;
+      background: #ecfdf5;
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+
     .contact-note {
       display: none;
       grid-column: 1 / -1;
@@ -475,6 +515,20 @@
     .condition-help {
       grid-column: 1 / -1;
       margin: 0;
+    }
+
+    .review-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .review-actions button {
+      min-height: 34px;
+      width: auto;
+      padding: 7px 10px;
+      font-size: 0.82rem;
     }
 
     .segmented {
@@ -525,6 +579,20 @@
     .success-panel p {
       margin: 6px 0;
       line-height: 1.35;
+    }
+
+    .success-panel label {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 8px;
+      font-weight: 400;
+    }
+
+    .success-panel input[type="checkbox"] {
+      width: auto;
+      min-height: auto;
+      margin: 0;
     }
 
     .intro-screen {
@@ -658,6 +726,7 @@
       .form-grid,
       .button-row,
       .quick-actions,
+      .step-progress,
       .score-grid {
         grid-template-columns: 1fr;
       }
@@ -707,6 +776,15 @@
       </div>
 
       <div class="message" id="formMessage">Start with photos, then move through condition, measurements, location, contact, and submit.</div>
+      <div class="step-progress" id="stepProgress" aria-label="Survey progress">
+        <button type="button" data-progress-section="photoSection">Photo</button>
+        <button type="button" data-progress-section="conditionSection">Condition</button>
+        <button type="button" data-progress-section="measurementsSection">Measurements</button>
+        <button type="button" data-progress-section="locationSection">Location</button>
+        <button type="button" data-progress-section="contactSection">Contact</button>
+        <button type="button" data-progress-section="reviewSection">Review</button>
+      </div>
+      <div class="next-action" id="nextAction">Add photos or continue if photos are not needed.</div>
       <div class="draft-panel" id="draftPanel">
         <p><strong>Draft found.</strong> Resume the unfinished report or start fresh.</p>
         <div class="button-row">
@@ -728,6 +806,12 @@
         <p><strong>GIS Score:</strong> <span id="successScore">--</span></p>
         <p><strong>Photos:</strong> <span id="successPhotos">--</span></p>
         <p><strong>Location:</strong> <span id="successLocation">--</span></p>
+        <details>
+          <summary>Nearby Report Options</summary>
+          <label><input id="nearbyKeepType" type="checkbox" checked> Keep report type</label>
+          <label><input id="nearbyKeepContext" type="checkbox" checked> Keep pedestrian volume and school/transit proximity</label>
+          <label><input id="nearbyKeepLocation" type="checkbox" checked> Keep map near this location</label>
+        </details>
         <div class="button-row">
           <button type="button" id="startNearbyReportButton">Start Another Nearby</button>
           <button class="secondary" type="button" id="startNewReportButton">Start New Report</button>
@@ -791,10 +875,10 @@
             <div>
               <label for="severity">Severity</label>
               <select id="severity" name="severity">
-                <option value="1">1 - Fair</option>
-                <option value="2">2 - Poor</option>
-                <option value="3">3 - Severe</option>
-                <option value="4">4 - Missing</option>
+                <option value="1">Fair: usable</option>
+                <option value="2">Poor: difficult</option>
+                <option value="3">Severe: hazardous</option>
+                <option value="4">Missing: absent</option>
               </select>
             </div>
 
@@ -874,6 +958,7 @@
 
         <details class="survey-section" id="measurementsSection">
           <summary>3. Measurements</summary>
+          <p class="help">Measurements are optional. Add them when available, or skip to location.</p>
           <div class="form-grid">
             <div data-measurement="vertical">
               <label for="verticalDisplacement">Vertical Displacement (in)</label>
@@ -997,13 +1082,13 @@
           </div>
           <div class="survey-nav">
             <button class="secondary" type="button" data-next-section="conditionSection">Back</button>
-            <button type="button" data-next-section="locationSection">Next: Location</button>
+            <button type="button" data-next-section="locationSection">Skip/Next: Location</button>
           </div>
         </details>
 
         <details class="survey-section" id="locationSection">
           <summary>4. Location & Coordinates</summary>
-          <p class="help">Use Point Issue for one defect. Use Sidewalk Segment for a longer section by setting a start and end point on the map.</p>
+          <p class="help">Choose the report type, then use the map target to capture the point or segment.</p>
           <div class="form-grid">
             <div class="full">
               <label for="reportType">Report Type</label>
@@ -1013,7 +1098,7 @@
               </select>
             </div>
           </div>
-          <p class="help" id="locationHelp">Use GPS to get close, then pan the map so the target sits on the sidewalk issue. Tap Use This Location when the target is correct.</p>
+          <p class="help" id="locationHelp">Point: move target to issue. Confirm point.</p>
           <div class="button-row location-actions" id="pointLocationActions">
             <button class="secondary" type="button" id="locateButton">Use My Location</button>
             <button type="button" id="confirmLocationButton">Confirm Point</button>
@@ -1031,6 +1116,8 @@
             <div class="map-target" aria-hidden="true"></div>
           </div>
 
+          <details class="reference-panel">
+            <summary>Location Details</summary>
           <div class="score-grid" aria-live="polite">
             <div class="metric">
               <span>GIS Score</span>
@@ -1079,6 +1166,7 @@
               <input id="address" name="address" readonly>
             </div>
           </div>
+          </details>
           <div class="survey-nav">
             <button class="secondary" type="button" data-next-section="measurementsSection">Back</button>
             <button type="button" data-next-section="contactSection">Next: Contact</button>
@@ -1135,11 +1223,19 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-02-location-actions-v1";
+    const APP_VERSION = "2026-06-02-guided-flow-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
     const DRAFT_STORAGE_KEY = "sidewalkAssessmentDraft";
+    const SURVEY_STEPS = [
+      { id: "photoSection", label: "Photo", action: "Add photos or continue if photos are not needed." },
+      { id: "conditionSection", label: "Condition", action: "Select the issue type, severity, and any context that applies." },
+      { id: "measurementsSection", label: "Measurements", action: "Add measurements if available, or skip to location." },
+      { id: "locationSection", label: "Location", action: "Use GPS, then adjust the map target and confirm the location." },
+      { id: "contactSection", label: "Contact", action: "Confirm contact info, then review the report." },
+      { id: "reviewSection", label: "Review", action: "Review the summary. Use Edit if something needs a correction." }
+    ];
     const SCORE_CONFIG = {
       conditionPenalty: {
         "No Issues": 0,
@@ -1204,6 +1300,7 @@
     let photoPreviewUrls = [];
     let draftTimer = null;
     let draftAutosaveEnabled = true;
+    let lastSubmittedReport = null;
     let segmentStart = null;
     let segmentEnd = null;
     let segmentLine = null;
@@ -1416,8 +1513,8 @@
       field("segmentTools").classList.toggle("visible", isSegment);
       field("confirmLocationButton").textContent = "Confirm Point";
       field("locationHelp").textContent = isSegment
-        ? "Use GPS to get close, then pan the map target to the start of the bad section. The main button will guide you through start, end, and confirm."
-        : "Use GPS to get close, then pan the map so the target sits on the sidewalk issue. Tap Confirm Point when it is correct.";
+        ? "Segment: move target to start. Set start. Move target to end. Set end."
+        : "Point: move target to issue. Confirm point.";
 
       if (isSegment) {
         updateSegmentPreview();
@@ -1426,6 +1523,7 @@
         markLocationUnconfirmed();
       }
       updateSegmentCaptureButton();
+      updateStepProgress("locationSection");
     }
 
     function handleSegmentCapture() {
@@ -2038,6 +2136,9 @@
       field("condition").addEventListener("change", updateMeasurementVisibility);
       field("condition").addEventListener("change", updateConditionHelp);
       field("photo").addEventListener("change", updatePhotoStatus);
+      document.querySelectorAll("[data-progress-section]").forEach((button) => {
+        button.addEventListener("click", () => openSurveyStep(button.dataset.progressSection));
+      });
       document.querySelectorAll("[data-preset]").forEach((button) => {
         button.addEventListener("click", () => applyPreset(button.dataset.preset));
       });
@@ -2053,6 +2154,7 @@
           if (section.id === "locationSection" && map) {
             setTimeout(() => map.invalidateSize(true), 80);
           }
+          updateStepProgress(section.id);
         });
       });
       field("downloadButton").addEventListener("click", downloadCsv);
@@ -2070,6 +2172,8 @@
       });
       field("surveyForm").addEventListener("input", updateRequiredChecklist);
       field("surveyForm").addEventListener("change", updateRequiredChecklist);
+      field("surveyForm").addEventListener("input", refreshCurrentStepProgress);
+      field("surveyForm").addEventListener("change", refreshCurrentStepProgress);
       field("surveyForm").addEventListener("input", scheduleDraftSave);
       field("surveyForm").addEventListener("change", scheduleDraftSave);
 
@@ -2081,6 +2185,7 @@
       updateMeasurementVisibility();
       updateConditionHelp();
       updateRequiredChecklist();
+      updateStepProgress("photoSection");
       showDraftRecovery();
     }
 
@@ -2091,6 +2196,38 @@
         updateUploadStatus();
         setMessage("Upload settings saved.", "ok");
       });
+    }
+
+    function updateStepProgress(activeSectionId) {
+      const snapshot = getCurrentReportSnapshot();
+      const complete = {
+        photoSection: Number(snapshot.severity) < 3 || Boolean(snapshot.photoName),
+        conditionSection: Boolean(snapshot.condition),
+        measurementsSection: true,
+        locationSection: snapshot.locationConfirmed === "Yes",
+        contactSection: Boolean(snapshot.reporterName || snapshot.email),
+        reviewSection: false
+      };
+
+      document.querySelectorAll("[data-progress-section]").forEach((button) => {
+        const sectionId = button.dataset.progressSection;
+        button.classList.toggle("active", sectionId === activeSectionId);
+        button.classList.toggle("complete", Boolean(complete[sectionId]) && sectionId !== activeSectionId);
+      });
+
+      const currentStep = SURVEY_STEPS.find((step) => step.id === activeSectionId) || SURVEY_STEPS[0];
+      let actionText = currentStep.action;
+      if (activeSectionId === "locationSection") {
+        actionText = isSegmentReport()
+          ? "Move target to start, set start, move target to end, set end, then confirm segment."
+          : "Move target to issue, then confirm point.";
+      }
+      field("nextAction").textContent = actionText;
+    }
+
+    function refreshCurrentStepProgress() {
+      const openSection = document.querySelector(".survey-section[open]");
+      updateStepProgress(openSection ? openSection.id : "photoSection");
     }
 
     function scheduleDraftSave() {
@@ -2292,24 +2429,28 @@
         ? "Segment, " + (report.segmentLengthFt || "--") + " ft"
         : report.latitude + ", " + report.longitude;
       const reviewItems = [
-        ["Report Type", report.reportType],
-        ["Conditions", report.condition || "--"],
-        ["Severity", severityLabel(report.severity)],
-        ["Measurements", measurementSummary(report)],
-        ["Location", locationText],
-        ["Photos", report.photoCount + " attached"],
-        ["Photo Captions", report.photoCaptions || "--"],
-        ["Contact", [report.reporterName, report.email].filter(Boolean).join(" / ") || "--"],
-        ["Priority", report.priorityClass + " (" + report.priorityScore + ")"],
-        ["GIS Score", report.score + " / 100 - " + report.conditionClass]
+        ["Report Type", report.reportType, "locationSection"],
+        ["Conditions", report.condition || "--", "conditionSection"],
+        ["Severity", severityLabel(report.severity), "conditionSection"],
+        ["Measurements", measurementSummary(report), "measurementsSection"],
+        ["Location", locationText, "locationSection"],
+        ["Photos", report.photoCount + " attached", "photoSection"],
+        ["Photo Captions", report.photoCaptions || "--", "photoSection"],
+        ["Contact", [report.reporterName, report.email].filter(Boolean).join(" / ") || "--", "contactSection"],
+        ["Priority", report.priorityClass + " (" + report.priorityScore + ")", "conditionSection"],
+        ["GIS Score", report.score + " / 100 - " + report.conditionClass, "conditionSection"]
       ];
 
       review.innerHTML = "";
-      reviewItems.forEach(([label, value]) => {
+      reviewItems.forEach(([label, value, sectionId]) => {
         const div = document.createElement("div");
         div.className = "review-item";
-        div.innerHTML = "<strong>" + escapeHtml(label) + "</strong><span>" + escapeHtml(value) + "</span>";
+        div.innerHTML = "<div class=\"review-actions\"><strong>" + escapeHtml(label) + "</strong><button class=\"secondary\" type=\"button\" data-edit-section=\"" + escapeHtml(sectionId) + "\">Edit</button></div><span>" + escapeHtml(value) + "</span>";
         review.appendChild(div);
+      });
+
+      review.querySelectorAll("[data-edit-section]").forEach((button) => {
+        button.addEventListener("click", () => openSurveyStep(button.dataset.editSection));
       });
     }
 
@@ -2464,6 +2605,7 @@
     }
 
     function showSuccess(report) {
+      lastSubmittedReport = report;
       field("successReportId").textContent = report.reportId;
       field("successReportType").textContent = report.reportType;
       field("successPriority").textContent = report.priorityClass + " (" + report.priorityScore + ")";
@@ -2509,18 +2651,37 @@
     }
 
     function startNearbyReport() {
-      const lat = field("latitude").value;
-      const lng = field("longitude").value;
-      const reportType = field("successReportType").textContent === "Sidewalk Segment" ? "Sidewalk Segment" : field("reportType").value;
+      const source = lastSubmittedReport || {};
+      const lat = source.latitude || field("latitude").value;
+      const lng = source.longitude || field("longitude").value;
+      const reportType = source.reportType || field("reportType").value;
+      const pedestrianVolume = source.pedestrianVolume || field("pedestrianVolume").value;
+      const schoolTransitProximity = source.schoolTransitProximity || field("schoolTransitProximity").value;
+      const keepType = field("nearbyKeepType").checked;
+      const keepContext = field("nearbyKeepContext").checked;
+      const keepLocation = field("nearbyKeepLocation").checked;
       resetFormAfterSubmit();
       field("successPanel").style.display = "none";
       field("surveyForm").style.display = "";
-      field("reportType").value = reportType;
-      syncSegmentedControl("reportType");
+
+      if (keepType) {
+        field("reportType").value = reportType;
+      }
+
+      if (keepContext) {
+        field("pedestrianVolume").value = pedestrianVolume;
+        field("schoolTransitProximity").value = schoolTransitProximity;
+      }
+
+      [
+        "reportType", "pedestrianVolume", "schoolTransitProximity"
+      ].forEach(syncSegmentedControl);
       updateReportTypeUI();
-      if (lat && lng) {
+
+      if (keepLocation && lat && lng) {
         setLocation(Number(lat), Number(lng), false, currentAccuracy);
       }
+
       openSurveyStep("photoSection");
       setMessage("Starting another report near the last location.", "ok");
       scheduleDraftSave();
@@ -2545,6 +2706,7 @@
       if (section && "open" in section) {
         section.open = true;
         section.scrollIntoView({ behavior: "smooth", block: "start" });
+        updateStepProgress(sectionId);
         if (sectionId === "locationSection" && map) {
           setTimeout(() => map.invalidateSize(true), 120);
         }
