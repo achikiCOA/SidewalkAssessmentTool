@@ -313,7 +313,7 @@
 
     .quick-actions {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 10px;
       padding: 0 14px 12px;
     }
@@ -550,7 +550,6 @@
       <div class="message" id="formMessage">Start with photos, then move through condition, measurements, location, contact, and submit.</div>
       <div class="quick-actions">
         <button class="secondary" type="button" id="photoFirstButton">Take Photo First</button>
-        <button class="secondary" type="button" id="newReportButton">New Report</button>
       </div>
 
       <div class="success-panel" id="successPanel" aria-live="polite">
@@ -893,7 +892,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-02-collapsible-definitions-v1";
+    const APP_VERSION = "2026-06-02-remove-new-report-top-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -1465,7 +1464,6 @@
       });
       field("downloadButton").addEventListener("click", downloadCsv);
       field("photoFirstButton").addEventListener("click", startPhotoFirst);
-      field("newReportButton").addEventListener("click", startNewReport);
       field("startNewReportButton").addEventListener("click", startNewReport);
       field("startAssessmentButton").addEventListener("click", startAssessment);
       ["reporterName", "email"].forEach((id) => field(id).addEventListener("change", saveContactInfo));
