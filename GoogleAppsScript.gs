@@ -41,113 +41,10 @@ const REQUIRED_HEADERS = [
   "backendVersion"
 ];
 
-function doGet(e) {
-  const params = e && e.parameter ? e.parameter : {};
-
-  if (params.debug === "1") {
-    return handleDebugCheck();
-  }
-
-  if (params.testWrite === "1") {
-    return handleDebugTestWrite();
-  }
-
+function doGet() {
   return ContentService
     .createTextOutput("Sidewalk Assessment upload endpoint is running. Backend version: " + BACKEND_VERSION)
     .setMimeType(ContentService.MimeType.TEXT);
-}
-
-function handleDebugCheck() {
-  try {
-    const props = PropertiesService.getScriptProperties();
-    const spreadsheetId = getRequiredProperty("SPREADSHEET_ID");
-    const sheetNameProperty = getRequiredProperty("SHEET_NAME");
-    const ss = SpreadsheetApp.openById(spreadsheetId);
-    const sheet = ss.getSheetByName(sheetNameProperty) || ss.getSheets()[0];
-
-    ensureSheetHeaders(sheet, REQUIRED_HEADERS);
-
-    const headers = getSheetHeaders(sheet);
-    const requiredMissing = REQUIRED_HEADERS.filter((header) => {
-      return headers.map(canonicalHeader).indexOf(canonicalHeader(header)) === -1;
-    });
-
-    return jsonOutput({
-      ok: true,
-      backendVersion: BACKEND_VERSION,
-      spreadsheetId: spreadsheetId,
-      spreadsheetName: ss.getName(),
-      sheetNameProperty: sheetNameProperty,
-      actualSheetNameUsed: sheet.getName(),
-      lastRow: sheet.getLastRow(),
-      headers: headers,
-      requiredMissing: requiredMissing,
-      propertiesPresent: {
-        SPREADSHEET_ID: Boolean(props.getProperty("SPREADSHEET_ID")),
-        SHEET_NAME: Boolean(props.getProperty("SHEET_NAME")),
-        PHOTO_FOLDER_ID: Boolean(props.getProperty("PHOTO_FOLDER_ID")),
-        ARCGIS_LAYER_URL: Boolean(props.getProperty("ARCGIS_LAYER_URL")),
-        ARCGIS_USERNAME: Boolean(props.getProperty("ARCGIS_USERNAME")),
-        ARCGIS_PASSWORD: Boolean(props.getProperty("ARCGIS_PASSWORD"))
-      }
-    });
-  } catch (err) {
-    return jsonOutput({
-      ok: false,
-      backendVersion: BACKEND_VERSION,
-      error: err.message
-    });
-  }
-}
-
-function handleDebugTestWrite() {
-  try {
-    const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
-    const sheet = ss.getSheetByName(getRequiredProperty("SHEET_NAME")) || ss.getSheets()[0];
-    const reportId = "DEBUG-" + new Date().toISOString();
-
-    ensureSheetHeaders(sheet, REQUIRED_HEADERS);
-    appendObjectRow(sheet, {
-      reportId: reportId,
-      submittedAt: new Date().toISOString(),
-      reporterName: "Debug Test",
-      email: "",
-      latitude: "",
-      longitude: "",
-      locationAccuracy: "",
-      locationConfirmed: "",
-      gpsLocked: "",
-      address: "Debug test row from Apps Script",
-      condition: "Debug",
-      severity: "",
-      comments: "If you see this row, Apps Script can write to this sheet.",
-      photoUrl: "",
-      score: "",
-      conditionClass: "",
-      priorityScore: "",
-      priorityClass: "",
-      photoStatus: "No photo",
-      arcgisStatus: "Debug test only",
-      arcgisObjectId: "",
-      arcgisError: "",
-      backendVersion: BACKEND_VERSION
-    });
-
-    return jsonOutput({
-      ok: true,
-      backendVersion: BACKEND_VERSION,
-      spreadsheetName: ss.getName(),
-      actualSheetNameUsed: sheet.getName(),
-      rowNumber: sheet.getLastRow(),
-      reportId: reportId
-    });
-  } catch (err) {
-    return jsonOutput({
-      ok: false,
-      backendVersion: BACKEND_VERSION,
-      error: err.message
-    });
-  }
 }
 
 function parsePayload(e) {
@@ -163,12 +60,6 @@ function parsePayload(e) {
   }
 
   return JSON.parse(raw);
-}
-
-function jsonOutput(data) {
-  return ContentService
-    .createTextOutput(JSON.stringify(data, null, 2))
-    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {

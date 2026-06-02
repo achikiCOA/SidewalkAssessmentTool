@@ -421,7 +421,47 @@
     }
 
     .upload-settings {
+      display: none;
+    }
+
+    .upload-settings.visible {
       display: block;
+    }
+
+    .reference-panel {
+      grid-column: 1 / -1;
+      padding: 12px;
+      border: 1px solid #d8e2ef;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .reference-panel h3 {
+      margin: 0 0 8px;
+      font-size: 0.95rem;
+    }
+
+    .reference-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+
+    .reference-panel p,
+    .reference-panel ul {
+      margin: 6px 0;
+      color: #475467;
+      font-size: 0.86rem;
+      line-height: 1.42;
+    }
+
+    .reference-panel ul {
+      padding-left: 18px;
+    }
+
+    .reference-panel a {
+      color: #0f766e;
+      font-weight: 700;
     }
 
     .honeypot {
@@ -592,6 +632,43 @@
             <div class="full">
               <label for="comments">Comments</label>
               <textarea id="comments" name="comments"></textarea>
+            </div>
+
+            <div class="reference-panel">
+              <h3>Field Definitions</h3>
+              <div class="reference-grid">
+                <div>
+                  <p><strong>Severity</strong></p>
+                  <ul>
+                    <li>Fair: usable, minor defect or early wear.</li>
+                    <li>Poor: clear defect affecting comfort, drainage, or accessibility.</li>
+                    <li>Severe: major barrier, trip risk, blocked path, or likely ADA concern.</li>
+                    <li>Missing: sidewalk, curb ramp, or accessible connection is absent.</li>
+                  </ul>
+                </div>
+                <div>
+                  <p><strong>Pedestrian Volume</strong></p>
+                  <ul>
+                    <li>Low: occasional pedestrian use.</li>
+                    <li>Medium: regular use during part of the day.</li>
+                    <li>High: frequent use, downtown area, school route, transit stop, park, or civic destination.</li>
+                  </ul>
+                </div>
+                <div>
+                  <p><strong>School/Transit Proximity</strong></p>
+                  <ul>
+                    <li>Yes: near a school, bus stop, transit stop, marked school route, or key public destination.</li>
+                    <li>No: no known school or transit connection nearby.</li>
+                    <li>Unknown: use when proximity is not clear in the field.</li>
+                  </ul>
+                </div>
+              </div>
+              <p><strong>ADA/PROWAG quick references:</strong>
+                <a href="https://www.access-board.gov/prowag/technical.html" target="_blank" rel="noopener">PROWAG technical requirements</a>,
+                <a href="https://www.access-board.gov/ada/guides/chapter-4-ramps-and-curb-ramps/" target="_blank" rel="noopener">ADA curb ramp guide</a>,
+                <a href="https://www.ada.gov/law-and-regs/design-standards/2010-stds/" target="_blank" rel="noopener">2010 ADA Standards</a>.
+              </p>
+              <p>Common field checks include 48 in. minimum pedestrian access route width in PROWAG, curb ramp running slope up to 8.3%, cross slope up to 2.1%, and surface openings or vertical changes that may affect accessibility. Always verify current federal, state, and local standards before final design or enforcement.</p>
             </div>
           </div>
           <div class="survey-nav">
@@ -801,7 +878,7 @@
         </div>
       </form>
 
-      <details class="upload-settings" open>
+      <details class="upload-settings" id="uploadSettings" open>
         <summary>Spreadsheet upload</summary>
         <p class="help">
           Paste a Google Apps Script Web App URL or Power Automate HTTP URL that accepts report submissions.
@@ -816,8 +893,8 @@
 
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
-    const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-06-02-upload-url-override-v1";
+    const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
+    const APP_VERSION = "2026-06-02-public-cleanup-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -883,6 +960,7 @@
       resetSavedReportsFromUrl();
       bindForm();
       bindSettings();
+      updateSettingsVisibility();
       restoreContactInfo();
       updateSavedCount();
       updateUploadStatus();
@@ -1825,6 +1903,11 @@
       const hasUrl = Boolean(getUploadUrl());
       const uploadText = hasUrl ? "Spreadsheet upload configured" : "Spreadsheet upload not configured";
       field("uploadStatus").textContent = uploadText + " · " + APP_VERSION;
+    }
+
+    function updateSettingsVisibility() {
+      const params = new URLSearchParams(window.location.search);
+      field("uploadSettings").classList.toggle("visible", params.get("settings") === "1");
     }
 
     function setMessage(text, type) {
