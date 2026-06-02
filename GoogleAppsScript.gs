@@ -3,6 +3,7 @@ const PHOTO_STATUS_COLUMN = 28;
 const ARCGIS_STATUS_COLUMN = 29;
 const ARCGIS_OBJECT_ID_COLUMN = 30;
 const ARCGIS_ERROR_COLUMN = 31;
+const BACKEND_VERSION = "2026-06-02-header-mapped-v2";
 const REQUIRED_HEADERS = [
   "reportId",
   "submittedAt",
@@ -36,12 +37,13 @@ const REQUIRED_HEADERS = [
   "photoStatus",
   "arcgisStatus",
   "arcgisObjectId",
-  "arcgisError"
+  "arcgisError",
+  "backendVersion"
 ];
 
 function doGet() {
   return ContentService
-    .createTextOutput("Sidewalk Assessment upload endpoint is running.")
+    .createTextOutput("Sidewalk Assessment upload endpoint is running. Backend version: " + BACKEND_VERSION)
     .setMimeType(ContentService.MimeType.TEXT);
 }
 
@@ -121,7 +123,8 @@ function handleReportUpload(data) {
     photoStatus: data.hasPhoto ? "Photo upload pending" : "No photo",
     arcgisStatus: "ArcGIS pending",
     arcgisObjectId: "",
-    arcgisError: ""
+    arcgisError: "",
+    backendVersion: BACKEND_VERSION
   });
 
   const rowNumber = sheet.getLastRow();
