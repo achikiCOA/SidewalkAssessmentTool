@@ -817,7 +817,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbyCKGhn5k438BGppA1Js6ZMwkJCQ7FDZNYvHkl6LQyrRG6ka4GNg9L-QEykCAmvxoA/exec";
-    const APP_VERSION = "2026-06-01-survey-flow-v1";
+    const APP_VERSION = "2026-06-02-upload-url-override-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -1818,7 +1818,7 @@
     }
 
     function getUploadUrl() {
-      return DEFAULT_UPLOAD_URL || localStorage.getItem(UPLOAD_URL_KEY) || "";
+      return localStorage.getItem(UPLOAD_URL_KEY) || DEFAULT_UPLOAD_URL || "";
     }
 
     function updateUploadStatus() {
