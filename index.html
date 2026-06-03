@@ -791,9 +791,10 @@
   <section class="intro-screen" id="introScreen">
     <h2>Before You Start</h2>
     <ol>
-      <li>Take one or more photos of the sidewalk issue first.</li>
-      <li>Select all issue types that apply and add any measurements.</li>
-      <li>Use the map to confirm the exact location, add contact information, review the photo, then submit.</li>
+      <li><strong>Photos:</strong> take one or more photos first. Add a close-up and a context photo when possible.</li>
+      <li><strong>Condition:</strong> choose the issue type, severity, and any helpful measurements.</li>
+      <li><strong>Location:</strong> choose Point Issue for one spot or Sidewalk Segment for a longer stretch, then confirm the map location.</li>
+      <li><strong>Contact:</strong> confirm your name or email, review the report, then submit.</li>
     </ol>
     <button type="button" id="startAssessmentButton">Start Assessment</button>
   </section>
@@ -813,7 +814,6 @@
           <button class="secondary" type="button" id="discardDraftButton">Start Fresh</button>
         </div>
       </div>
-      <div class="checklist" id="requiredChecklist" aria-live="polite"></div>
       <div class="quick-actions">
         <button class="secondary" type="button" id="photoFirstButton">Take Photo First</button>
         <button class="secondary" type="button" id="guideButton">Guide</button>
@@ -1254,7 +1254,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-03-page-flow-v1";
+    const APP_VERSION = "2026-06-03-start-instructions-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
