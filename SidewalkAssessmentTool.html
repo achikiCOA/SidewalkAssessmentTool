@@ -390,14 +390,6 @@
       grid-template-columns: 1fr;
     }
 
-    .quick-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      padding: 0 14px 12px;
-    }
-
-    .checklist,
     .review-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -405,7 +397,6 @@
       margin-top: 12px;
     }
 
-    .check-item,
     .review-item {
       min-width: 0;
       padding: 10px;
@@ -414,24 +405,12 @@
       background: #f8fafc;
     }
 
-    .check-item {
-      color: #7a4b00;
-      background: #fffbeb;
-    }
-
-    .check-item.complete {
-      color: #14532d;
-      background: #f0fdf4;
-    }
-
-    .check-item strong,
     .review-item strong {
       display: block;
       margin-bottom: 4px;
       font-size: 0.82rem;
     }
 
-    .check-item span,
     .review-item span {
       display: block;
       color: inherit;
@@ -755,7 +734,6 @@
     @media (max-width: 620px) {
       .form-grid,
       .button-row,
-      .quick-actions,
       .score-grid {
         grid-template-columns: 1fr;
       }
@@ -800,13 +778,61 @@
     </ol>
     <details class="reference-panel">
       <summary>Field Definitions & References</summary>
-      <p><strong>Point Issue:</strong> one specific spot, such as a single trip hazard, blocked sidewalk, broken slab, curb ramp issue, or missing detectable warning.</p>
-      <p><strong>Sidewalk Segment:</strong> a longer continuous stretch with the same general problem, such as repeated heaving, cracking, narrow passage, or several damaged slabs in a row.</p>
+      <div class="reference-grid">
+        <div>
+          <p><strong>Point Issue</strong></p>
+          <ul>
+            <li>Use for one specific spot.</li>
+            <li>Examples: single trip hazard, blocked sidewalk, broken slab, curb ramp issue, or missing detectable warning.</li>
+          </ul>
+        </div>
+        <div>
+          <p><strong>Sidewalk Segment</strong></p>
+          <ul>
+            <li>Use for a longer continuous stretch with the same general problem.</li>
+            <li>Examples: repeated heaving, cracking, narrow passage, or several damaged slabs in a row.</li>
+          </ul>
+        </div>
+        <div>
+          <p><strong>Severity</strong></p>
+          <ul>
+            <li>Fair: usable, minor defect or early wear.</li>
+            <li>Poor: clear defect affecting comfort, drainage, or accessibility.</li>
+            <li>Severe: major barrier, trip risk, blocked path, or likely ADA concern.</li>
+            <li>Missing: sidewalk, curb ramp, or accessible connection is absent.</li>
+          </ul>
+        </div>
+        <div>
+          <p><strong>Pedestrian Volume</strong></p>
+          <ul>
+            <li>Low: occasional pedestrian use.</li>
+            <li>Medium: regular use during part of the day.</li>
+            <li>High: frequent use, downtown area, school route, transit stop, park, or civic destination.</li>
+          </ul>
+        </div>
+        <div>
+          <p><strong>School/Transit Proximity</strong></p>
+          <ul>
+            <li>Yes: near a school, bus stop, transit stop, marked school route, or key public destination.</li>
+            <li>No: no known school or transit connection nearby.</li>
+            <li>Unknown: use when proximity is not clear in the field.</li>
+          </ul>
+        </div>
+        <div>
+          <p><strong>Detectable Warning</strong></p>
+          <ul>
+            <li>Present: truncated dome surface appears intact and visible.</li>
+            <li>Missing: curb ramp lacks a detectable warning surface where one is expected.</li>
+            <li>Damaged/Worn or Low Contrast: warning surface may not be reliably detectable.</li>
+          </ul>
+        </div>
+      </div>
       <p><strong>ADA/PROWAG quick references:</strong>
         <a href="https://www.access-board.gov/prowag/technical.html" target="_blank" rel="noopener">PROWAG technical requirements</a>,
         <a href="https://www.access-board.gov/ada/guides/chapter-4-ramps-and-curb-ramps/" target="_blank" rel="noopener">ADA curb ramp guide</a>,
         <a href="https://www.ada.gov/law-and-regs/design-standards/2010-stds/" target="_blank" rel="noopener">2010 ADA Standards</a>.
       </p>
+      <p>Common field checks include 48 in. minimum pedestrian access route width in PROWAG, sidewalk running slope less than 5%, maximum cross slope of 2%, curb ramp running slope up to 8.3%, and surface openings or vertical changes that may affect accessibility. Always verify current federal, state, and local standards before final design or enforcement.</p>
     </details>
     <button type="button" id="startAssessmentButton">Start Assessment</button>
   </section>
@@ -826,11 +852,6 @@
           <button class="secondary" type="button" id="discardDraftButton">Start Fresh</button>
         </div>
       </div>
-      <div class="quick-actions">
-        <button class="secondary" type="button" id="photoFirstButton">Take Photo First</button>
-        <button class="secondary" type="button" id="guideButton">Guide</button>
-      </div>
-
       <div class="success-panel" id="successPanel" aria-live="polite">
         <h3>Report Sent</h3>
         <p><strong>Report ID:</strong> <span id="successReportId">--</span></p>
@@ -1275,7 +1296,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-03-location-first-flow-v1";
+    const APP_VERSION = "2026-06-03-clean-start-flow-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -1699,7 +1720,6 @@
         reverseGeocode(midpoint.lat, midpoint.lng);
         locationConfirmed = true;
         updateLocationConfirmationStatus();
-        updateRequiredChecklist();
         updateSegmentCaptureButton();
       } else {
         field("segmentLengthFt").value = "";
@@ -1709,7 +1729,6 @@
             ? "Step 2 of 3: end point set. Move the map target to the start point."
             : "Step 1 of 3: set the segment start point.";
         markLocationUnconfirmed();
-        updateRequiredChecklist();
         updateSegmentCaptureButton();
       }
     }
@@ -1797,7 +1816,6 @@
       locationConfirmed = true;
       updateLocationConfirmationStatus();
       setMessage("Location confirmed. Continue through the report and submit when ready.", "ok");
-      updateRequiredChecklist();
       scheduleDraftSave();
     }
 
@@ -1805,7 +1823,6 @@
       locationConfirmed = false;
       updateLocationConfirmationStatus();
       updateSegmentCaptureButton();
-      updateRequiredChecklist();
     }
 
     function updateLocationConfirmationStatus() {
@@ -2197,8 +2214,6 @@
         button.addEventListener("click", () => openSurveyStep(button.dataset.nextSection));
       });
       field("downloadButton").addEventListener("click", downloadCsv);
-      field("photoFirstButton").addEventListener("click", startPhotoFirst);
-      field("guideButton").addEventListener("click", openGuide);
       field("reviewButton").addEventListener("click", reviewReport);
       field("resumeDraftButton").addEventListener("click", resumeDraft);
       field("discardDraftButton").addEventListener("click", discardDraft);
@@ -2209,8 +2224,6 @@
         field(id).addEventListener("change", saveContactInfo);
         field(id).addEventListener("input", updateContactSavedNote);
       });
-      field("surveyForm").addEventListener("input", updateRequiredChecklist);
-      field("surveyForm").addEventListener("change", updateRequiredChecklist);
       field("surveyForm").addEventListener("input", refreshCurrentStepProgress);
       field("surveyForm").addEventListener("change", refreshCurrentStepProgress);
       field("surveyForm").addEventListener("input", scheduleDraftSave);
@@ -2223,7 +2236,6 @@
 
       updateMeasurementVisibility();
       updateConditionHelp();
-      updateRequiredChecklist();
       openSurveyStep("locationSection", false);
       showDraftRecovery();
     }
@@ -2384,8 +2396,6 @@
         const report = await buildReport();
         const validation = validateReport(report);
         populateReview(report);
-        updateRequiredChecklist(report);
-
         if (!validation.ok) {
           setMessage(validation.message, "error");
           openSection(validation.sectionId);
@@ -2397,51 +2407,6 @@
       } catch (error) {
         setMessage(error.message || "The report could not be reviewed.", "error");
       }
-    }
-
-    function updateRequiredChecklist(report) {
-      const checklist = field("requiredChecklist");
-      if (!checklist) return;
-
-      const snapshot = report || getCurrentReportSnapshot();
-      const items = [
-        {
-          label: "Condition",
-          complete: Boolean(snapshot.condition),
-          text: snapshot.condition || "Choose at least one issue type."
-        },
-        {
-          label: "Location",
-          complete: snapshot.locationConfirmed === "Yes",
-          text: snapshot.locationConfirmed === "Yes" ? "Location confirmed." : "Confirm the map location."
-        },
-        {
-          label: "Photos",
-          complete: Number(snapshot.severity) < 3 || Boolean(snapshot.photoName),
-          text: snapshot.photoName ? snapshot.photoName : Number(snapshot.severity) >= 3 ? "Required for severe or missing reports." : "Optional for this severity."
-        },
-        {
-          label: "Contact",
-          complete: Boolean(snapshot.reporterName || snapshot.email),
-          text: snapshot.reporterName || snapshot.email ? "Contact info present." : "Name or email is recommended."
-        }
-      ];
-
-      if (snapshot.reportType === "Sidewalk Segment") {
-        items.splice(2, 0, {
-          label: "Segment",
-          complete: Boolean(snapshot.segmentStartLat && snapshot.segmentStartLng && snapshot.segmentEndLat && snapshot.segmentEndLng),
-          text: snapshot.segmentLengthFt ? "Length: about " + snapshot.segmentLengthFt + " ft." : "Set start and end points."
-        });
-      }
-
-      checklist.innerHTML = "";
-      items.forEach((item) => {
-        const div = document.createElement("div");
-        div.className = "check-item" + (item.complete ? " complete" : "");
-        div.innerHTML = "<strong>" + escapeHtml(item.label) + "</strong><span>" + escapeHtml(item.text) + "</span>";
-        checklist.appendChild(div);
-      });
     }
 
     function populateReview(report) {
@@ -2529,15 +2494,6 @@
     function severityLabel(value) {
       const option = Array.from(field("severity").options).find((item) => item.value === String(value));
       return option ? option.textContent : String(value || "--");
-    }
-
-    function openGuide() {
-      openSurveyStep("conditionSection");
-      const reference = field("conditionSection").querySelector(".reference-panel");
-      if (reference) {
-        reference.open = true;
-        setTimeout(() => reference.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
-      }
     }
 
     function updateContactSavedNote() {
@@ -2669,7 +2625,6 @@
       updateMeasurementVisibility();
       markLocationUnconfirmed();
       updateContactSavedNote();
-      updateRequiredChecklist();
       draftAutosaveEnabled = true;
     }
 
@@ -2717,12 +2672,6 @@
       openSurveyStep("locationSection");
       setMessage("Starting another report near the last location.", "ok");
       scheduleDraftSave();
-    }
-
-    function startPhotoFirst() {
-      startNewReport();
-      openSurveyStep("photoSection");
-      field("photo").click();
     }
 
     function openSection(sectionId) {
@@ -2856,7 +2805,6 @@
         field("photoStatus").textContent = "No photo selected.";
         field("photoCountStatus").textContent = "0 photos attached";
         previewGrid.style.display = "none";
-        updateRequiredChecklist();
         return;
       }
 
@@ -2884,7 +2832,6 @@
       });
 
       previewGrid.style.display = "grid";
-      updateRequiredChecklist();
       openSection("conditionSection");
     }
 
