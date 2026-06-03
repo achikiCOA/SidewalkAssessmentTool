@@ -791,11 +791,23 @@
   <section class="intro-screen" id="introScreen">
     <h2>Before You Start</h2>
     <ol>
-      <li><strong>Photos:</strong> take one or more photos first. Add a close-up and a context photo when possible.</li>
-      <li><strong>Condition:</strong> choose the issue type, severity, and any helpful measurements.</li>
       <li><strong>Location:</strong> choose Point Issue for one spot or Sidewalk Segment for a longer stretch, then confirm the map location.</li>
+      <li><strong>Photos:</strong> take one or more photos. Add a close-up and a context photo when possible.</li>
+      <li><strong>Condition:</strong> choose a preset or issue type and severity.</li>
+      <li><strong>Context:</strong> add pedestrian volume, school/transit proximity, and comments.</li>
+      <li><strong>Measurements:</strong> add measurements if available; otherwise skip to contact.</li>
       <li><strong>Contact:</strong> confirm your name or email, review the report, then submit.</li>
     </ol>
+    <details class="reference-panel">
+      <summary>Field Definitions & References</summary>
+      <p><strong>Point Issue:</strong> one specific spot, such as a single trip hazard, blocked sidewalk, broken slab, curb ramp issue, or missing detectable warning.</p>
+      <p><strong>Sidewalk Segment:</strong> a longer continuous stretch with the same general problem, such as repeated heaving, cracking, narrow passage, or several damaged slabs in a row.</p>
+      <p><strong>ADA/PROWAG quick references:</strong>
+        <a href="https://www.access-board.gov/prowag/technical.html" target="_blank" rel="noopener">PROWAG technical requirements</a>,
+        <a href="https://www.access-board.gov/ada/guides/chapter-4-ramps-and-curb-ramps/" target="_blank" rel="noopener">ADA curb ramp guide</a>,
+        <a href="https://www.ada.gov/law-and-regs/design-standards/2010-stds/" target="_blank" rel="noopener">2010 ADA Standards</a>.
+      </p>
+    </details>
     <button type="button" id="startAssessmentButton">Start Assessment</button>
   </section>
 
@@ -805,7 +817,7 @@
         <h2 id="surveyTitle">Survey</h2>
       </div>
 
-      <div class="message" id="formMessage">Start with photos, then move through condition, measurements, location, contact, and submit.</div>
+      <div class="message" id="formMessage">Start with location, then move through photos, condition, context, measurements, contact, and submit.</div>
       <div class="next-action" id="nextAction">Add photos or continue if photos are not needed.</div>
       <div class="draft-panel" id="draftPanel">
         <p><strong>Draft found.</strong> Resume the unfinished report or start fresh.</p>
@@ -846,7 +858,7 @@
         </div>
 
         <details class="survey-section" open id="photoSection">
-          <summary>1. Take Photo</summary>
+          <summary>2. Take Photo</summary>
           <div class="form-grid">
             <div class="full">
               <label for="photo">Photos</label>
@@ -856,13 +868,14 @@
               <div class="photo-preview-grid" id="photoPreviewGrid" aria-live="polite"></div>
             </div>
           </div>
-          <div class="survey-nav single">
+          <div class="survey-nav">
+            <button class="secondary" type="button" data-next-section="locationSection">Back</button>
             <button type="button" data-next-section="conditionSection">Next: Condition</button>
           </div>
         </details>
 
         <details class="survey-section" id="conditionSection">
-          <summary>2. Condition</summary>
+          <summary>3. Condition</summary>
           <div class="form-grid">
             <div class="full">
               <label>Quick Presets</label>
@@ -901,29 +914,6 @@
                 <option value="3">Severe: hazardous</option>
                 <option value="4">Missing: absent</option>
               </select>
-            </div>
-
-            <div>
-              <label for="pedestrianVolume">Pedestrian Volume</label>
-              <select id="pedestrianVolume" name="pedestrianVolume">
-                <option>Low</option>
-                <option>Medium</option>
-                <option>High</option>
-              </select>
-            </div>
-
-            <div>
-              <label for="schoolTransitProximity">School/Transit Proximity</label>
-              <select id="schoolTransitProximity" name="schoolTransitProximity">
-                <option>No</option>
-                <option>Yes</option>
-                <option>Unknown</option>
-              </select>
-            </div>
-
-            <div class="full">
-              <label for="comments">Comments</label>
-              <textarea id="comments" name="comments"></textarea>
             </div>
 
             <details class="reference-panel">
@@ -973,13 +963,45 @@
           </div>
           <div class="survey-nav">
             <button class="secondary" type="button" data-next-section="photoSection">Back</button>
+            <button type="button" data-next-section="contextSection">Next: Context</button>
+          </div>
+        </details>
+
+        <details class="survey-section" id="contextSection">
+          <summary>4. Context & Comments</summary>
+          <div class="form-grid">
+            <div>
+              <label for="pedestrianVolume">Pedestrian Volume</label>
+              <select id="pedestrianVolume" name="pedestrianVolume">
+                <option>Low</option>
+                <option>Medium</option>
+                <option>High</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="schoolTransitProximity">School/Transit Proximity - Is it close to a school or a bus stop?</label>
+              <select id="schoolTransitProximity" name="schoolTransitProximity">
+                <option>No</option>
+                <option>Yes</option>
+                <option>Unknown</option>
+              </select>
+            </div>
+
+            <div class="full">
+              <label for="comments">Comments</label>
+              <textarea id="comments" name="comments"></textarea>
+            </div>
+          </div>
+          <div class="survey-nav">
+            <button class="secondary" type="button" data-next-section="conditionSection">Back</button>
             <button type="button" data-next-section="measurementsSection">Next: Measurements</button>
           </div>
         </details>
 
         <details class="survey-section" id="measurementsSection">
-          <summary>3. Measurements</summary>
-          <p class="help">Measurements are optional. Add them when available, or skip to location.</p>
+          <summary>5. Measurements</summary>
+          <p class="help">Measurements are optional. Add them when available, or skip to contact.</p>
           <div class="form-grid">
             <div data-measurement="vertical">
               <label for="verticalDisplacement">Vertical Displacement (in)</label>
@@ -1102,13 +1124,13 @@
             </div>
           </div>
           <div class="survey-nav">
-            <button class="secondary" type="button" data-next-section="conditionSection">Back</button>
-            <button type="button" data-next-section="locationSection">Skip/Next: Location</button>
+            <button class="secondary" type="button" data-next-section="contextSection">Back</button>
+            <button type="button" data-next-section="contactSection">Skip/Next: Contact</button>
           </div>
         </details>
 
         <details class="survey-section" id="locationSection">
-          <summary>4. Location & Coordinates</summary>
+          <summary>1. Location & Coordinates</summary>
           <p class="help">Choose the report type, then use the map target to capture the point or segment.</p>
           <div class="form-grid">
             <div class="full">
@@ -1199,13 +1221,12 @@
           </div>
           </details>
           <div class="survey-nav">
-            <button class="secondary" type="button" data-next-section="measurementsSection">Back</button>
-            <button type="button" data-next-section="contactSection">Next: Contact</button>
+            <button type="button" data-next-section="photoSection">Next: Photos</button>
           </div>
         </details>
 
         <details class="survey-section" id="contactSection">
-          <summary>5. Contact Information</summary>
+          <summary>6. Contact Information</summary>
           <div class="form-grid">
             <p class="contact-note" id="contactSavedNote">Using saved contact info.</p>
             <div>
@@ -1219,13 +1240,13 @@
             </div>
           </div>
           <div class="survey-nav">
-            <button class="secondary" type="button" data-next-section="locationSection">Back</button>
+            <button class="secondary" type="button" data-next-section="measurementsSection">Back</button>
             <button type="button" id="reviewButton">Review Report</button>
           </div>
         </details>
 
         <details class="survey-section" id="reviewSection">
-          <summary>6. Review & Submit</summary>
+          <summary>7. Review & Submit</summary>
           <div class="review-grid" id="reviewGrid" aria-live="polite"></div>
           <div class="survey-nav">
             <button class="secondary" type="button" data-next-section="contactSection">Back</button>
@@ -1254,16 +1275,17 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-03-map-zoom-v1";
+    const APP_VERSION = "2026-06-03-location-first-flow-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
     const DRAFT_STORAGE_KEY = "sidewalkAssessmentDraft";
     const SURVEY_STEPS = [
+      { id: "locationSection", label: "Location", action: "Choose point or segment, then confirm the map location." },
       { id: "photoSection", label: "Photo", action: "Add photos or continue if photos are not needed." },
-      { id: "conditionSection", label: "Condition", action: "Select the issue type, severity, and any context that applies." },
-      { id: "measurementsSection", label: "Measurements", action: "Add measurements if available, or skip to location." },
-      { id: "locationSection", label: "Location", action: "Use GPS, then adjust the map target and confirm the location." },
+      { id: "conditionSection", label: "Condition", action: "Choose a preset or issue type and severity." },
+      { id: "contextSection", label: "Context", action: "Add pedestrian volume, school/transit proximity, and comments." },
+      { id: "measurementsSection", label: "Measurements", action: "Add measurements if available, or skip to contact." },
       { id: "contactSection", label: "Contact", action: "Confirm contact info, then review the report." },
       { id: "reviewSection", label: "Review", action: "Review the summary. Use Edit if something needs a correction." }
     ];
@@ -1555,7 +1577,7 @@
         markLocationUnconfirmed();
       }
       updateSegmentCaptureButton();
-      updateStepProgress("locationSection");
+      refreshCurrentStepProgress();
     }
 
     function handleSegmentCapture() {
@@ -2202,7 +2224,7 @@
       updateMeasurementVisibility();
       updateConditionHelp();
       updateRequiredChecklist();
-      openSurveyStep("photoSection", false);
+      openSurveyStep("locationSection", false);
       showDraftRecovery();
     }
 
@@ -2228,7 +2250,7 @@
 
     function refreshCurrentStepProgress() {
       const openSection = document.querySelector(".survey-section.active-step");
-      updateStepProgress(openSection ? openSection.id : "photoSection");
+      updateStepProgress(openSection ? openSection.id : "locationSection");
     }
 
     function scheduleDraftSave() {
@@ -2340,7 +2362,7 @@
       }
 
       field("draftPanel").classList.remove("visible");
-      openSurveyStep("conditionSection");
+      openSurveyStep("locationSection");
       setMessage("Draft restored. Reattach photos if needed before submitting.", "ok");
       draftAutosaveEnabled = true;
       scheduleDraftSave();
@@ -2437,6 +2459,7 @@
         ["Location", locationText, "locationSection"],
         ["Photos", report.photoCount + " attached", "photoSection"],
         ["Photo Captions", report.photoCaptions || "--", "photoSection"],
+        ["Context/Comments", contextSummary(report), "contextSection"],
         ["Contact", [report.reporterName, report.email].filter(Boolean).join(" / ") || "--", "contactSection"],
         ["Priority", report.priorityClass + " (" + report.priorityScore + ")", "conditionSection"],
         ["GIS Score", report.score + " / 100 - " + report.conditionClass, "conditionSection"]
@@ -2495,6 +2518,14 @@
       return parts.length ? parts.join("; ") : "No measurements entered";
     }
 
+    function contextSummary(report) {
+      const parts = [];
+      if (report.pedestrianVolume) parts.push("Pedestrian volume: " + report.pedestrianVolume);
+      if (report.schoolTransitProximity) parts.push("School/transit proximity: " + report.schoolTransitProximity);
+      if (report.comments) parts.push("Comments: " + report.comments);
+      return parts.length ? parts.join("; ") : "--";
+    }
+
     function severityLabel(value) {
       const option = Array.from(field("severity").options).find((item) => item.value === String(value));
       return option ? option.textContent : String(value || "--");
@@ -2502,7 +2533,7 @@
 
     function openGuide() {
       openSurveyStep("conditionSection");
-      const reference = document.querySelector(".reference-panel");
+      const reference = field("conditionSection").querySelector(".reference-panel");
       if (reference) {
         reference.open = true;
         setTimeout(() => reference.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
@@ -2647,8 +2678,8 @@
       field("successPanel").style.display = "none";
       field("surveyForm").style.display = "";
       field("formMessage").scrollIntoView({ behavior: "smooth", block: "start" });
-      openSurveyStep("photoSection");
-      setMessage("Start with photos, then continue through condition, measurements, location, contact, and submit.", "");
+      openSurveyStep("locationSection");
+      setMessage("Start by choosing point or segment and confirming the map location.", "");
     }
 
     function startNearbyReport() {
@@ -2683,7 +2714,7 @@
         setLocation(Number(lat), Number(lng), false, currentAccuracy);
       }
 
-      openSurveyStep("photoSection");
+      openSurveyStep("locationSection");
       setMessage("Starting another report near the last location.", "ok");
       scheduleDraftSave();
     }
@@ -2721,8 +2752,8 @@
     function startAssessment() {
       field("introScreen").style.display = "none";
       field("appShell").style.display = "grid";
-      openSurveyStep("photoSection");
-      setMessage("Take or select photos first, then continue to condition and measurements.", "");
+      openSurveyStep("locationSection");
+      setMessage("Choose point or segment first, then confirm the location.", "");
       if (map) {
         setTimeout(() => map.invalidateSize(true), 100);
       }
