@@ -1254,7 +1254,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-03-start-instructions-v1";
+    const APP_VERSION = "2026-06-03-map-zoom-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -1363,12 +1363,16 @@
     function initMap(lat, lng) {
       map = L.map("map", {
         tap: true,
-        zoomControl: true
-      }).setView([lat, lng], 16);
+        zoomControl: true,
+        maxZoom: 22,
+        zoomSnap: 0.5,
+        zoomDelta: 0.5
+      }).setView([lat, lng], 18);
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "&copy; OpenStreetMap contributors",
-        maxZoom: 20
+        maxNativeZoom: 19,
+        maxZoom: 22
       }).addTo(map);
 
       marker = L.marker([lat, lng], {
@@ -1396,11 +1400,6 @@
       field("confirmLocationButton").addEventListener("click", confirmLocation);
       field("segmentCaptureButton").addEventListener("click", handleSegmentCapture);
       field("clearSegmentButton").addEventListener("click", clearSegment);
-      field("locationSection").addEventListener("toggle", () => {
-        if (field("locationSection").open && map) {
-          setTimeout(() => map.invalidateSize(true), 80);
-        }
-      });
       attachResizeObserver(field("map"));
       setLocation(lat, lng, false, null);
       updateReportTypeUI();
@@ -1449,7 +1448,7 @@
             const lng = position.coords.longitude;
             setLocation(lat, lng, false, accuracy);
             suppressMapMoveUpdate = true;
-            map.setView([lat, lng], accuracy <= 20 ? 19 : 18);
+            map.setView([lat, lng], accuracy <= 20 ? 21 : 20);
             setMessage("GPS fix found. Accuracy: about " + Math.round(accuracy) + " m.", "ok");
           }
 
