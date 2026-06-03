@@ -375,10 +375,15 @@
     }
 
     .survey-nav {
+      position: sticky;
+      bottom: 0;
+      z-index: 20;
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
       margin-top: 14px;
+      padding: 10px 0 0;
+      background: #fff;
     }
 
     .survey-nav.single {
@@ -433,35 +438,6 @@
       overflow-wrap: anywhere;
       font-size: 0.94rem;
       line-height: 1.35;
-    }
-
-    .step-progress {
-      display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 6px;
-      padding: 12px 14px 0;
-    }
-
-    .step-progress button {
-      min-height: 38px;
-      padding: 8px 6px;
-      border: 1px solid var(--line);
-      color: #475467;
-      background: #fff;
-      font-size: 0.78rem;
-      line-height: 1.1;
-    }
-
-    .step-progress button.active {
-      border-color: var(--accent);
-      color: #fff;
-      background: var(--accent);
-    }
-
-    .step-progress button.complete {
-      border-color: #bbf7d0;
-      color: #14532d;
-      background: #f0fdf4;
     }
 
     .next-action {
@@ -687,6 +663,14 @@
       display: block;
     }
 
+    .local-export {
+      display: none;
+    }
+
+    .local-export.visible {
+      display: grid;
+    }
+
     .reference-panel {
       grid-column: 1 / -1;
       padding: 12px;
@@ -720,6 +704,20 @@
     .reference-panel a {
       color: #0f766e;
       font-weight: 700;
+    }
+
+    .survey-section {
+      display: none;
+    }
+
+    .survey-section.active-step {
+      display: block;
+    }
+
+    .survey-section > summary {
+      pointer-events: none;
+      cursor: default;
+      font-size: 1.05rem;
     }
 
     .honeypot {
@@ -758,7 +756,6 @@
       .form-grid,
       .button-row,
       .quick-actions,
-      .step-progress,
       .score-grid {
         grid-template-columns: 1fr;
       }
@@ -808,14 +805,6 @@
       </div>
 
       <div class="message" id="formMessage">Start with photos, then move through condition, measurements, location, contact, and submit.</div>
-      <div class="step-progress" id="stepProgress" aria-label="Survey progress">
-        <button type="button" data-progress-section="photoSection">Photo</button>
-        <button type="button" data-progress-section="conditionSection">Condition</button>
-        <button type="button" data-progress-section="measurementsSection">Measurements</button>
-        <button type="button" data-progress-section="locationSection">Location</button>
-        <button type="button" data-progress-section="contactSection">Contact</button>
-        <button type="button" data-progress-section="reviewSection">Review</button>
-      </div>
       <div class="next-action" id="nextAction">Add photos or continue if photos are not needed.</div>
       <div class="draft-panel" id="draftPanel">
         <p><strong>Draft found.</strong> Resume the unfinished report or start fresh.</p>
@@ -1244,7 +1233,7 @@
           </div>
         </details>
 
-        <div class="button-row">
+        <div class="button-row local-export" id="localExport">
           <button class="secondary" type="button" id="downloadButton">Download CSV</button>
         </div>
       </form>
@@ -1265,7 +1254,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-02-report-type-help-v1";
+    const APP_VERSION = "2026-06-03-page-flow-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -2180,26 +2169,11 @@
       field("condition").addEventListener("change", updateMeasurementVisibility);
       field("condition").addEventListener("change", updateConditionHelp);
       field("photo").addEventListener("change", updatePhotoStatus);
-      document.querySelectorAll("[data-progress-section]").forEach((button) => {
-        button.addEventListener("click", () => openSurveyStep(button.dataset.progressSection));
-      });
       document.querySelectorAll("[data-preset]").forEach((button) => {
         button.addEventListener("click", () => applyPreset(button.dataset.preset));
       });
       document.querySelectorAll("[data-next-section]").forEach((button) => {
         button.addEventListener("click", () => openSurveyStep(button.dataset.nextSection));
-      });
-      document.querySelectorAll(".survey-section").forEach((section) => {
-        section.addEventListener("toggle", () => {
-          if (!section.open) return;
-          document.querySelectorAll(".survey-section").forEach((other) => {
-            if (other !== section) other.open = false;
-          });
-          if (section.id === "locationSection" && map) {
-            setTimeout(() => map.invalidateSize(true), 80);
-          }
-          updateStepProgress(section.id);
-        });
       });
       field("downloadButton").addEventListener("click", downloadCsv);
       field("photoFirstButton").addEventListener("click", startPhotoFirst);
@@ -2229,7 +2203,7 @@
       updateMeasurementVisibility();
       updateConditionHelp();
       updateRequiredChecklist();
-      updateStepProgress("photoSection");
+      openSurveyStep("photoSection", false);
       showDraftRecovery();
     }
 
@@ -2243,22 +2217,6 @@
     }
 
     function updateStepProgress(activeSectionId) {
-      const snapshot = getCurrentReportSnapshot();
-      const complete = {
-        photoSection: Number(snapshot.severity) < 3 || Boolean(snapshot.photoName),
-        conditionSection: Boolean(snapshot.condition),
-        measurementsSection: true,
-        locationSection: snapshot.locationConfirmed === "Yes",
-        contactSection: Boolean(snapshot.reporterName || snapshot.email),
-        reviewSection: false
-      };
-
-      document.querySelectorAll("[data-progress-section]").forEach((button) => {
-        const sectionId = button.dataset.progressSection;
-        button.classList.toggle("active", sectionId === activeSectionId);
-        button.classList.toggle("complete", Boolean(complete[sectionId]) && sectionId !== activeSectionId);
-      });
-
       const currentStep = SURVEY_STEPS.find((step) => step.id === activeSectionId) || SURVEY_STEPS[0];
       let actionText = currentStep.action;
       if (activeSectionId === "locationSection") {
@@ -2270,7 +2228,7 @@
     }
 
     function refreshCurrentStepProgress() {
-      const openSection = document.querySelector(".survey-section[open]");
+      const openSection = document.querySelector(".survey-section.active-step");
       updateStepProgress(openSection ? openSection.id : "photoSection");
     }
 
@@ -2741,15 +2699,19 @@
       openSurveyStep(sectionId);
     }
 
-    function openSurveyStep(sectionId) {
+    function openSurveyStep(sectionId, shouldScroll = true) {
       document.querySelectorAll(".survey-section").forEach((section) => {
         section.open = section.id === sectionId;
+        section.classList.toggle("active-step", section.id === sectionId);
       });
 
       const section = field(sectionId);
       if (section && "open" in section) {
         section.open = true;
-        section.scrollIntoView({ behavior: "smooth", block: "start" });
+        section.classList.add("active-step");
+        if (shouldScroll) {
+          section.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
         updateStepProgress(sectionId);
         if (sectionId === "locationSection" && map) {
           setTimeout(() => map.invalidateSize(true), 120);
@@ -3080,7 +3042,9 @@
 
     function updateSettingsVisibility() {
       const params = new URLSearchParams(window.location.search);
-      field("uploadSettings").classList.toggle("visible", params.get("settings") === "1");
+      const showSettings = params.get("settings") === "1";
+      field("uploadSettings").classList.toggle("visible", showSettings);
+      field("localExport").classList.toggle("visible", showSettings);
     }
 
     function setMessage(text, type) {
