@@ -1268,6 +1268,7 @@
 
         <details class="survey-section" id="reviewSection">
           <summary>7. Review & Submit</summary>
+          <div class="message" id="reviewNotice">Review the summary below, then submit when ready.</div>
           <div class="review-grid" id="reviewGrid" aria-live="polite"></div>
           <div class="survey-nav">
             <button class="secondary" type="button" data-next-section="contactSection">Back</button>
@@ -1296,7 +1297,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-03-clean-start-flow-v1";
+    const APP_VERSION = "2026-06-03-review-submit-fix-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
@@ -2396,12 +2397,14 @@
         const report = await buildReport();
         const validation = validateReport(report);
         populateReview(report);
+
         if (!validation.ok) {
-          setMessage(validation.message, "error");
-          openSection(validation.sectionId);
+          setReviewNotice(validation.message + " Use the Edit button below to fix it.", "error");
+          openSurveyStep("reviewSection");
           return;
         }
 
+        setReviewNotice("Ready to submit. Review the summary below, then submit when ready.", "ok");
         openSurveyStep("reviewSection");
         setMessage("Review the report summary, then submit when it looks right.", "ok");
       } catch (error) {
@@ -2441,6 +2444,12 @@
       review.querySelectorAll("[data-edit-section]").forEach((button) => {
         button.addEventListener("click", () => openSurveyStep(button.dataset.editSection));
       });
+    }
+
+    function setReviewNotice(text, type) {
+      const notice = field("reviewNotice");
+      notice.textContent = text;
+      notice.className = "message" + (type ? " " + type : "");
     }
 
     function getCurrentReportSnapshot() {
@@ -2521,8 +2530,10 @@
         const validation = validateReport(report);
 
         if (!validation.ok) {
+          populateReview(report);
+          setReviewNotice(validation.message + " Use the Edit button below to fix it.", "error");
           setMessage(validation.message, "error");
-          openSection(validation.sectionId);
+          openSurveyStep("reviewSection");
           return;
         }
 
