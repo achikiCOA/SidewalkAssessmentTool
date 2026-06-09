@@ -788,13 +788,22 @@
       bottom: 0;
       z-index: 1200;
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
+      gap: 8px;
       margin: 12px -14px -14px;
       padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
       background: #fff;
       border-top: 1px solid var(--line);
       box-shadow: 0 -8px 20px rgba(20, 32, 52, 0.08);
+    }
+
+    .recorder-actions .condition-toggle-grid {
+      margin: 0;
+    }
+
+    .recorder-control-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
     }
 
     .review-segment-list {
@@ -885,7 +894,6 @@
       .form-grid,
       .button-row,
       .score-grid,
-      .condition-toggle-grid,
       .recorder-actions {
         grid-template-columns: 1fr;
       }
@@ -1477,12 +1485,6 @@
           </div>
         </div>
 
-        <div class="condition-toggle-grid" aria-label="Current sidewalk condition">
-          <button class="condition-toggle active" type="button" data-condition="Green">Green<br><span>Good</span></button>
-          <button class="condition-toggle" type="button" data-condition="Yellow">Yellow<br><span>Review</span></button>
-          <button class="condition-toggle" type="button" data-condition="Red">Red<br><span>Poor</span></button>
-        </div>
-
         <div class="recorder-grid" aria-live="polite">
           <div class="recorder-metric">
             <span>Status</span>
@@ -1528,10 +1530,16 @@
         </details>
 
         <div class="recorder-actions">
-          <button class="secondary" type="button" id="improveRecorderGpsButton">Improve GPS</button>
-          <button type="button" id="startRecordingButton">Start</button>
-          <button class="secondary" type="button" id="pauseRecordingButton" disabled>Pause</button>
-          <button class="secondary" type="button" id="stopRecordingButton" disabled>Stop</button>
+          <div class="condition-toggle-grid" aria-label="Current sidewalk condition">
+            <button class="condition-toggle active" type="button" data-condition="Green">Green<br><span>Good</span></button>
+            <button class="condition-toggle" type="button" data-condition="Yellow">Yellow<br><span>Review</span></button>
+            <button class="condition-toggle" type="button" data-condition="Red">Red<br><span>Poor</span></button>
+          </div>
+          <div class="recorder-control-grid">
+            <button class="secondary" type="button" id="improveRecorderGpsButton">Improve GPS</button>
+            <button type="button" id="startRecordingButton">Start</button>
+            <button class="secondary" type="button" id="stopRecordingButton" disabled>Stop</button>
+          </div>
         </div>
       </div>
     </section>
@@ -2476,8 +2484,7 @@
       field("startRecorderButton").addEventListener("click", startRecorderMode);
       field("backToIntroFromRecorder").addEventListener("click", backToIntroFromRecorder);
       field("improveRecorderGpsButton").addEventListener("click", improveRecorderGpsStart);
-      field("startRecordingButton").addEventListener("click", startRecording);
-      field("pauseRecordingButton").addEventListener("click", togglePauseRecording);
+      field("startRecordingButton").addEventListener("click", handleStartPauseRecording);
       field("stopRecordingButton").addEventListener("click", stopRecording);
       field("downloadRecorderGeoJsonButton").addEventListener("click", downloadRecorderGeoJson);
       field("clearRecorderSessionsButton").addEventListener("click", clearRecorderSessions);
@@ -3519,6 +3526,15 @@
       recorderStartFixActive = false;
     }
 
+    function handleStartPauseRecording() {
+      if (recorderState.status === "recording" || recorderState.status === "paused") {
+        togglePauseRecording();
+        return;
+      }
+
+      startRecording();
+    }
+
     function togglePauseRecording() {
       if (recorderState.status === "recording") {
         recorderState.status = "paused";
@@ -3790,9 +3806,12 @@
       field("recorderPointCount").textContent = String(recorderState.points.length);
       field("recorderSegmentCount").textContent = String(recorderState.segments.length);
       field("recorderReviewCount").textContent = String(reviewCount);
-      field("startRecordingButton").disabled = recorderStartFixActive || recorderState.status === "recording" || recorderState.status === "paused";
-      field("pauseRecordingButton").disabled = !(recorderState.status === "recording" || recorderState.status === "paused");
-      field("pauseRecordingButton").textContent = recorderState.status === "paused" ? "Resume" : "Pause";
+      field("startRecordingButton").disabled = recorderStartFixActive;
+      field("startRecordingButton").textContent = recorderState.status === "recording"
+        ? "Pause"
+        : recorderState.status === "paused"
+          ? "Resume"
+          : "Start";
       field("stopRecordingButton").disabled = !(recorderState.status === "recording" || recorderState.status === "paused");
       field("improveRecorderGpsButton").disabled = recorderStartFixActive || recorderState.status === "recording" || recorderState.status === "paused";
     }
