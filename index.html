@@ -1613,7 +1613,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "";
-    const APP_VERSION = "2026-06-09-security-hardening-v1";
+    const APP_VERSION = "2026-06-09-debugging-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
     const RECORDER_ACTIVE_STORAGE_KEY = "sidewalkRecorderActiveSession";
@@ -1680,7 +1680,8 @@
       priorityPedestrianMedium: 5,
       prioritySchoolTransit: 10
     };
-    const RECORDER_DEBUG = false;
+    const DEBUG = false;
+    const RECORDER_DEBUG = DEBUG;
     const RECORDER_MAX_ACCURACY_METERS = 15;
     const RECORDER_MIN_DISTANCE_METERS = 1;
     const RECORDER_SEGMENT_GAP_METERS = 30;
@@ -1742,10 +1743,18 @@
         return;
       }
 
-      initMap(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lng);
+      try {
+        initMap(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lng);
+      } catch (error) {
+        handleAppError("Map initialization failed.", error, setMessage);
+      }
     }
 
     function initMap(lat, lng) {
+      if (map) {
+        debugLog("Main map already initialized; skipping duplicate init.");
+        return;
+      }
       map = L.map("map", {
         tap: true,
         zoomControl: true,
@@ -1822,8 +1831,9 @@
       const startedAt = Date.now();
       const stopTimer = window.setTimeout(stopWatchingLocation, 22000);
 
-      locationWatchId = navigator.geolocation.watchPosition(
-        (position) => {
+      try {
+        locationWatchId = navigator.geolocation.watchPosition(
+          (position) => {
           const accuracy = Number(position.coords.accuracy);
           const isBetter = !bestPosition || accuracy < Number(bestPosition.coords.accuracy);
 
@@ -1840,14 +1850,20 @@
           if (accuracy <= 10 || Date.now() - startedAt > 16000) {
             stopWatchingLocation();
           }
-        },
-        () => {
+          },
+          (error) => {
           window.clearTimeout(stopTimer);
           stopWatchingLocation();
+          debugLog("Point GPS watch failed", error);
           setMessage("Location access was not available. You can still pan the map to the sidewalk issue.", "error");
-        },
-        { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
-      );
+          },
+          { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+        );
+      } catch (error) {
+        window.clearTimeout(stopTimer);
+        stopWatchingLocation();
+        handleAppError("GPS lookup failed.", error, setMessage);
+      }
 
       function stopWatchingLocation() {
         window.clearTimeout(stopTimer);
@@ -2685,6 +2701,7 @@
       try {
         return JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY) || "null");
       } catch (error) {
+        handleAppError("Saved draft could not be read.", error, setMessage);
         return null;
       }
     }
@@ -3118,6 +3135,7 @@
       try {
         return JSON.parse(localStorage.getItem(CONTACT_STORAGE_KEY) || "{}");
       } catch (error) {
+        handleAppError("Saved contact information could not be read.", error, setMessage);
         return {};
       }
     }
@@ -3263,7 +3281,10 @@
     function fileToDataUrl(file) {
       return new Promise((resolve, reject) => {
         if (file.type && file.type.indexOf("image/") === 0) {
-          resizePhoto(file).then(resolve).catch(() => readOriginalFile(file, resolve, reject));
+          resizePhoto(file).then(resolve).catch((error) => {
+            debugLog("Photo resize failed; falling back to original read.", error);
+            readOriginalFile(file, resolve, reject);
+          });
           return;
         }
 
@@ -3272,10 +3293,14 @@
     }
 
     function readOriginalFile(file, resolve, reject) {
+      try {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
         reader.onerror = () => reject(new Error("Photo could not be read."));
         reader.readAsDataURL(file);
+      } catch (error) {
+        reject(error);
+      }
     }
 
     function resizePhoto(file) {
@@ -3301,8 +3326,12 @@
           image.src = reader.result;
         };
 
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+        reader.onerror = () => reject(new Error("Photo could not be resized."));
+        try {
+          reader.readAsDataURL(file);
+        } catch (error) {
+          reject(error);
+        }
       });
     }
 
@@ -3329,12 +3358,17 @@
           throw new Error("Spreadsheet upload failed.");
         }
       } catch (error) {
-        await fetch(uploadUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(report)
-        });
+        debugLog("Primary sync request failed; trying no-cors fallback.", error);
+        try {
+          await fetch(uploadUrl, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(report)
+          });
+        } catch (fallbackError) {
+          throw new Error("Sync failed. " + getErrorMessage(fallbackError));
+        }
       }
 
       return true;
@@ -3385,6 +3419,8 @@
         mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(data)
+      }).catch((error) => {
+        throw new Error("Sync failed. " + getErrorMessage(error));
       });
     }
 
@@ -3393,6 +3429,7 @@
       try {
         return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
       } catch (error) {
+        handleAppError("Saved reports could not be read.", error, setMessage);
         return [];
       }
     }
@@ -3410,7 +3447,7 @@
         localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
         warnIfLocalStorageLarge(setMessage);
       } catch (error) {
-        console.warn("Local report backup was skipped.", error);
+        handleAppError("Local report backup was skipped.", error, setMessage);
       }
     }
 
@@ -3457,6 +3494,15 @@
       const message = field("formMessage");
       message.textContent = text;
       message.className = "message" + (type ? " " + type : "");
+    }
+
+    function handleAppError(userMessage, error, messageFn = setMessage) {
+      debugLog(userMessage, error);
+      messageFn(userMessage + " " + getErrorMessage(error), "error");
+    }
+
+    function getErrorMessage(error) {
+      return error && error.message ? error.message : "";
     }
 
     function createEmptyRecorderState() {
@@ -3516,23 +3562,27 @@
         return;
       }
 
-      recorderMap = L.map("recorderMap", {
-        tap: true,
-        zoomControl: true,
-        maxZoom: 22,
-        zoomSnap: 0.5,
-        zoomDelta: 0.5
-      }).setView([DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lng], 18);
+      try {
+        recorderMap = L.map("recorderMap", {
+          tap: true,
+          zoomControl: true,
+          maxZoom: 22,
+          zoomSnap: 0.5,
+          zoomDelta: 0.5
+        }).setView([DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lng], 18);
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "&copy; OpenStreetMap contributors",
-        maxNativeZoom: 19,
-        maxZoom: 22
-      }).addTo(recorderMap);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "&copy; OpenStreetMap contributors",
+          maxNativeZoom: 19,
+          maxZoom: 22
+        }).addTo(recorderMap);
 
-      attachRecorderResizeObserver(field("recorderMap"));
-      setTimeout(() => recorderMap.invalidateSize(true), 100);
-      setTimeout(() => recorderMap.invalidateSize(true), 500);
+        attachRecorderResizeObserver(field("recorderMap"));
+        setTimeout(() => recorderMap.invalidateSize(true), 100);
+        setTimeout(() => recorderMap.invalidateSize(true), 500);
+      } catch (error) {
+        handleAppError("Recorder map initialization failed.", error, setRecorderMessage);
+      }
     }
 
     function attachRecorderResizeObserver(el) {
@@ -3556,7 +3606,12 @@
         return;
       }
 
-      initRecorderMap();
+      try {
+        initRecorderMap();
+      } catch (error) {
+        handleAppError("Recorder map initialization failed.", error, setRecorderMessage);
+        return;
+      }
       stopRecorderWatch();
       stopRecorderStartWatch();
       clearRecorderMapLayers();
@@ -3580,15 +3635,23 @@
       setRecorderCondition("Green");
       renderRecorderReviewList();
       setRecorderMessage(recorderStartPoint
-        ? "Recording from improved GPS start. Walk the sidewalk and tap Yellow or Red when condition changes."
-        : "Recording. For better accuracy, you can stop and use Improve GPS before starting.",
+        ? "Recording started from improved GPS start. Walk the sidewalk and tap Yellow or Red when condition changes."
+        : "Recording started. For better accuracy, you can stop and use Improve GPS before starting.",
         "ok");
 
-      recorderWatchId = navigator.geolocation.watchPosition(
-        handleGpsPoint,
-        () => setRecorderMessage("GPS access was not available. Check location permission and try again.", "error"),
-        { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
-      );
+      try {
+        recorderWatchId = navigator.geolocation.watchPosition(
+          handleGpsPoint,
+          (error) => {
+            debugRecorder("Recorder GPS watch failed", error);
+            setRecorderMessage("GPS unavailable. Check location permission and try again.", "error");
+          },
+          { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+        );
+      } catch (error) {
+        handleAppError("Recorder GPS watch failed.", error, setRecorderMessage);
+        return;
+      }
 
       updateRecorderUi();
       saveActiveRecorderState();
@@ -3729,7 +3792,7 @@
       renderSegments();
       renderRecorderReviewList();
       updateRecorderUi();
-      setRecorderMessage("Recording saved locally. Export GeoJSON when you are ready to review it in GIS.", "ok");
+      setRecorderMessage("Recording stopped and saved locally. Export GeoJSON when you are ready to review it in GIS.", "ok");
       debugRecorder("Recorder stopped", {
         pointCount: recorderState.points.length,
         segmentCount: recorderState.segments.length,
@@ -3790,7 +3853,7 @@
     function shouldAcceptGpsPoint(point) {
       const accuracy = Number(point.accuracyMeters);
       if (Number.isFinite(accuracy) && accuracy > RECORDER_MAX_ACCURACY_METERS) {
-        setRecorderMessage("GPS point skipped because accuracy is about " + Math.round(accuracy) + " m. Wait for 15 m or better.", "error");
+        setRecorderMessage("Poor GPS accuracy: point skipped at about " + Math.round(accuracy) + " m. Wait for 15 m or better.", "error");
         debugRecorder("GPS point rejected for accuracy", { accuracyMeters: accuracy });
         return false;
       }
@@ -3828,11 +3891,13 @@
 
     function debugRecorder(message, data) {
       if (!RECORDER_DEBUG) return;
-      if (data === undefined) {
-        console.debug("[Recorder] " + message);
-      } else {
-        console.debug("[Recorder] " + message, data);
-      }
+      debugLog("[Recorder] " + message, data);
+    }
+
+    function debugLog(message, data) {
+      if (!DEBUG) return;
+      if (data === undefined) console.debug(message);
+      else console.debug(message, data);
     }
 
     function runRecorderSegmentSelfTest() {
@@ -4337,7 +4402,7 @@
         localStorage.setItem(RECORDER_ACTIVE_STORAGE_KEY, JSON.stringify(createRecorderSessionPayload(recorderState)));
         warnIfLocalStorageLarge(setRecorderMessage);
       } catch (error) {
-        debugRecorder("Active recorder session could not be saved", error);
+        handleAppError("Active recorder session could not be saved.", error, setRecorderMessage);
       }
     }
 
@@ -4345,7 +4410,7 @@
       try {
         return JSON.parse(localStorage.getItem(RECORDER_ACTIVE_STORAGE_KEY) || "null");
       } catch (error) {
-        debugRecorder("Active recorder session was malformed", error);
+        handleAppError("Active recorder session could not be read.", error, setRecorderMessage);
         return null;
       }
     }
@@ -4389,7 +4454,7 @@
         if (!Array.isArray(stored)) return [];
         return stored.map(normalizeRecorderSession).filter(Boolean);
       } catch (error) {
-        debugRecorder("Stored recorder sessions were malformed", error);
+        handleAppError("Stored recorder sessions could not be read.", error, setRecorderMessage);
         return [];
       }
     }
@@ -4543,9 +4608,10 @@
           return;
         }
         downloadGeoJson(geojson);
+        debugLog("GeoJSON export succeeded", { featureCount: geojson.features.length });
         setRecorderMessage("GeoJSON exported for ArcGIS review.", "ok");
       } catch (error) {
-        setRecorderMessage(error.message || "GeoJSON export failed.", "error");
+        handleAppError("GeoJSON export failed.", error, setRecorderMessage);
       }
     }
 
@@ -4622,15 +4688,19 @@
     function downloadGeoJson(geojson) {
       const filename = "sidewalk-segments-" + new Date().toISOString().slice(0, 10) + ".geojson";
 
-      const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: "application/geo+json;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      try {
+        const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: "application/geo+json;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        throw new Error("Export download failed. " + getErrorMessage(error));
+      }
     }
 
     function buildRecorderSegmentNotes(session, segment) {

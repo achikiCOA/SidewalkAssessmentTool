@@ -4,6 +4,7 @@ const ARCGIS_STATUS_COLUMN = 29;
 const ARCGIS_OBJECT_ID_COLUMN = 30;
 const ARCGIS_ERROR_COLUMN = 31;
 const BACKEND_VERSION = "2026-06-02-field-ux-v1";
+const DEBUG = false;
 const REQUIRED_HEADERS = [
   "reportId",
   "submittedAt",
@@ -70,6 +71,15 @@ function parsePayload(e) {
   return JSON.parse(raw);
 }
 
+function debugLog(message, data) {
+  if (!DEBUG) return;
+  if (data === undefined) {
+    console.log(message);
+  } else {
+    console.log(message, data);
+  }
+}
+
 function doPost(e) {
   try {
     const data = parsePayload(e);
@@ -91,7 +101,7 @@ function handleReportUpload(data) {
   const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
   const sheet = ss.getSheetByName(getRequiredProperty("SHEET_NAME")) || ss.getSheets()[0];
   ensureSheetHeaders(sheet, REQUIRED_HEADERS);
-  console.log("Report upload received. reportId=" + data.reportId + ", spreadsheetId=" + ss.getId() + ", sheetName=" + sheet.getName());
+  debugLog("Report upload received. reportId=" + data.reportId + ", spreadsheetId=" + ss.getId() + ", sheetName=" + sheet.getName());
 
   appendObjectRow(sheet, {
     reportId: data.reportId,
@@ -139,7 +149,7 @@ function handleReportUpload(data) {
   });
 
   const rowNumber = sheet.getLastRow();
-  console.log("Report row appended. reportId=" + data.reportId + ", rowNumber=" + rowNumber);
+  debugLog("Report row appended. reportId=" + data.reportId + ", rowNumber=" + rowNumber);
 
   try {
     const arcgisResult = addArcGISFeature(data, "");
