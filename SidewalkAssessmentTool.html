@@ -1514,6 +1514,10 @@
             <span>Review Needed</span>
             <strong id="recorderReviewCount">0</strong>
           </div>
+          <div class="recorder-metric">
+            <span>Saved Sessions</span>
+            <strong id="recorderSavedCount">0</strong>
+          </div>
         </div>
 
         <div id="recorderMap" aria-label="Continuous GPS recorder map"></div>
@@ -1558,9 +1562,11 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-09-recorder-segments-v1";
+    const APP_VERSION = "2026-06-09-recorder-local-persistence-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
+    const RECORDER_ACTIVE_STORAGE_KEY = "sidewalkRecorderActiveSession";
+    const RECORDER_STORAGE_VERSION = 1;
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
     const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
     const DRAFT_STORAGE_KEY = "sidewalkAssessmentDraft";
@@ -1661,6 +1667,7 @@
     const field = (id) => document.getElementById(id);
 
     window.addEventListener("load", initApp);
+    window.addEventListener("beforeunload", warnBeforeLeavingActiveRecorder);
 
     function initApp() {
       resetSavedReportsFromUrl();
@@ -3364,9 +3371,12 @@
       field("recorderEmail").value = contact.email || "";
 
       initRecorderMap();
+      restoreActiveRecorderState();
       updateRecorderUi();
       renderRecorderReviewList();
-      setRecorderMessage("Recorder ready. Default condition is Green / Good.", "");
+      if (recorderState.status === "idle") {
+        setRecorderMessage("Recorder ready. Default condition is Green / Good.", "");
+      }
     }
 
     function backToIntroFromRecorder() {
@@ -3463,6 +3473,7 @@
       );
 
       updateRecorderUi();
+      saveActiveRecorderState();
       debugRecorder("Recorder started", { sessionId: recorderState.sessionId });
     }
 
@@ -3572,6 +3583,7 @@
         setRecorderMessage("Recording resumed.", "ok");
       }
 
+      saveActiveRecorderState();
       updateRecorderUi();
     }
 
@@ -3594,7 +3606,8 @@
       recorderState.segments = rebuildSegmentsFromPoints(recorderState.points);
       recorderState.distanceFt = Math.round(recorderState.segments.reduce((total, segment) => total + segment.distanceFt, 0));
 
-      saveRecorderSession(recorderState);
+      saveRecorderSession(createRecorderSessionPayload(recorderState));
+      clearActiveRecorderState();
       renderSegments();
       renderRecorderReviewList();
       updateRecorderUi();
@@ -3644,6 +3657,7 @@
       recorderState.distanceFt = Math.round(recorderState.segments.reduce((total, segment) => total + segment.distanceFt, 0));
       renderSegments();
       updateRecorderUi();
+      saveActiveRecorderState();
 
       if (recorderMap && recorderState.points.length === 1) {
         recorderMap.setView([point.latitude, point.longitude], recorderState.lastAccuracy && recorderState.lastAccuracy <= 20 ? 21 : 20);
@@ -3744,6 +3758,7 @@
       if (recorderState.status === "recording") {
         setRecorderMessage("Condition set to " + recorderConditionLabel(recorderState.condition) + ". New GPS points will use this color.", "ok");
       }
+      saveActiveRecorderState();
       updateRecorderUi();
     }
 
@@ -3767,6 +3782,7 @@
         longitude: lastPoint ? lastPoint.longitude : ""
       });
       setRecorderMessage("Recorder note added.", "ok");
+      saveActiveRecorderState();
       updateRecorderUi();
     }
 
@@ -3789,6 +3805,7 @@
       });
       field("recorderPhoto").value = "";
       setRecorderMessage(files.length + " recorder photo" + (files.length === 1 ? "" : "s") + " attached locally.", "ok");
+      saveActiveRecorderState();
       updateRecorderUi();
     }
 
@@ -4025,6 +4042,7 @@
       field("recorderPointCount").textContent = String(recorderState.points.length);
       field("recorderSegmentCount").textContent = String(recorderState.segments.length);
       field("recorderReviewCount").textContent = String(reviewCount);
+      field("recorderSavedCount").textContent = String(getRecorderSessions().length);
       field("startRecordingButton").disabled = recorderStartFixActive;
       field("startRecordingButton").textContent = recorderState.status === "recording"
         ? "Pause"
@@ -4035,6 +4053,13 @@
       field("improveRecorderGpsButton").disabled = recorderStartFixActive || recorderState.status === "recording" || recorderState.status === "paused";
     }
 
+    function warnBeforeLeavingActiveRecorder(event) {
+      if (recorderState.status !== "recording" && recorderState.status !== "paused") return;
+      event.preventDefault();
+      event.returnValue = "Recorder Mode is active. Stop recording before leaving so the session can be saved locally.";
+      return event.returnValue;
+    }
+
     function saveRecorderContact() {
       const contact = {
         reporterName: field("recorderName").value.trim(),
@@ -4043,18 +4068,161 @@
       localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(contact));
     }
 
+    function createRecorderSessionPayload(state) {
+      const routeId = state.sessionId || makeId("REC");
+      return {
+        storageVersion: RECORDER_STORAGE_VERSION,
+        routeId: routeId,
+        sessionId: routeId,
+        routeName: state.routeName || "",
+        inspectorName: state.recorderName || "",
+        recorderName: state.recorderName || "",
+        email: state.email || "",
+        startedAt: state.startedAt,
+        endedAt: state.endedAt,
+        rawPoints: Array.isArray(state.points) ? state.points : [],
+        generatedSegments: Array.isArray(state.segments) ? state.segments : [],
+        notes: Array.isArray(state.notes) ? state.notes : [],
+        photos: Array.isArray(state.photos) ? state.photos : [],
+        distanceFt: Number(state.distanceFt) || 0,
+        lastAccuracy: state.lastAccuracy || ""
+      };
+    }
+
+    function saveActiveRecorderState() {
+      if (recorderState.status !== "recording" && recorderState.status !== "paused") return;
+      try {
+        localStorage.setItem(RECORDER_ACTIVE_STORAGE_KEY, JSON.stringify(createRecorderSessionPayload(recorderState)));
+      } catch (error) {
+        debugRecorder("Active recorder session could not be saved", error);
+      }
+    }
+
+    function getActiveRecorderState() {
+      try {
+        return JSON.parse(localStorage.getItem(RECORDER_ACTIVE_STORAGE_KEY) || "null");
+      } catch (error) {
+        debugRecorder("Active recorder session was malformed", error);
+        return null;
+      }
+    }
+
+    function clearActiveRecorderState() {
+      localStorage.removeItem(RECORDER_ACTIVE_STORAGE_KEY);
+    }
+
+    function restoreActiveRecorderState() {
+      const saved = normalizeRecorderSession(getActiveRecorderState());
+      if (!saved || !saved.rawPoints.length) return false;
+
+      recorderState = createEmptyRecorderState();
+      recorderState.sessionId = saved.sessionId || saved.routeId;
+      recorderState.status = "paused";
+      recorderState.condition = saved.rawPoints[saved.rawPoints.length - 1].condition || "Green";
+      recorderState.startedAt = saved.startedAt;
+      recorderState.endedAt = "";
+      recorderState.routeName = saved.routeName || "";
+      recorderState.recorderName = saved.inspectorName || saved.recorderName || "";
+      recorderState.email = saved.email || "";
+      recorderState.points = saved.rawPoints || [];
+      recorderState.segments = rebuildSegmentsFromPoints(recorderState.points, recorderState.sessionId);
+      recorderState.notes = saved.notes || [];
+      recorderState.photos = saved.photos || [];
+      recorderState.distanceFt = Math.round(recorderState.segments.reduce((total, segment) => total + segment.distanceFt, 0));
+      recorderState.lastAccuracy = saved.lastAccuracy || "";
+      field("recorderRouteName").value = recorderState.routeName;
+      field("recorderName").value = recorderState.recorderName;
+      field("recorderEmail").value = recorderState.email;
+      setRecorderCondition(recorderState.condition);
+      renderSegments();
+      renderRecorderReviewList();
+      setRecorderMessage("Recovered an interrupted recording. It is paused so you can resume or stop and save it.", "ok");
+      return true;
+    }
+
     function getRecorderSessions() {
       try {
-        return JSON.parse(localStorage.getItem(RECORDER_STORAGE_KEY) || "[]");
+        const stored = JSON.parse(localStorage.getItem(RECORDER_STORAGE_KEY) || "[]");
+        if (!Array.isArray(stored)) return [];
+        return stored.map(normalizeRecorderSession).filter(Boolean);
       } catch (error) {
+        debugRecorder("Stored recorder sessions were malformed", error);
         return [];
       }
     }
 
     function saveRecorderSession(session) {
       const sessions = getRecorderSessions();
-      sessions.push(session);
+      const normalized = normalizeRecorderSession(session);
+      if (!normalized) return null;
+      const existingIndex = sessions.findIndex((item) => item.routeId === normalized.routeId);
+      if (existingIndex >= 0) {
+        sessions[existingIndex] = normalized;
+      } else {
+        sessions.push(normalized);
+      }
       localStorage.setItem(RECORDER_STORAGE_KEY, JSON.stringify(sessions));
+      updateRecorderUi();
+      return normalized;
+    }
+
+    function deleteRecorderSession(routeId) {
+      if (!routeId) return false;
+      const sessions = getRecorderSessions();
+      const remaining = sessions.filter((session) => session.routeId !== routeId);
+      localStorage.setItem(RECORDER_STORAGE_KEY, JSON.stringify(remaining));
+      updateRecorderUi();
+      return remaining.length !== sessions.length;
+    }
+
+    function updateRecorderSession(routeId, patch) {
+      if (!routeId || !patch || typeof patch !== "object") return null;
+      const sessions = getRecorderSessions();
+      const index = sessions.findIndex((session) => session.routeId === routeId);
+      if (index < 0) return null;
+
+      const updated = normalizeRecorderSession(Object.assign({}, sessions[index], patch));
+      sessions[index] = updated;
+      localStorage.setItem(RECORDER_STORAGE_KEY, JSON.stringify(sessions));
+      updateRecorderUi();
+      return updated;
+    }
+
+    function normalizeRecorderSession(session) {
+      if (!session || typeof session !== "object") return null;
+
+      const rawPoints = Array.isArray(session.rawPoints)
+        ? session.rawPoints
+        : Array.isArray(session.points)
+          ? session.points
+          : [];
+      const generatedSegments = Array.isArray(session.generatedSegments)
+        ? session.generatedSegments
+        : Array.isArray(session.segments)
+          ? session.segments
+          : [];
+      const routeId = session.routeId || session.sessionId || makeId("REC");
+      const inspectorName = session.inspectorName || session.recorderName || "";
+
+      return {
+        storageVersion: RECORDER_STORAGE_VERSION,
+        routeId: routeId,
+        sessionId: session.sessionId || routeId,
+        routeName: session.routeName || "",
+        inspectorName: inspectorName,
+        recorderName: inspectorName,
+        email: session.email || "",
+        startedAt: session.startedAt || "",
+        endedAt: session.endedAt || "",
+        rawPoints: rawPoints,
+        generatedSegments: generatedSegments,
+        points: rawPoints,
+        segments: generatedSegments,
+        notes: Array.isArray(session.notes) ? session.notes : [],
+        photos: Array.isArray(session.photos) ? session.photos : [],
+        distanceFt: Number(session.distanceFt) || Math.round(generatedSegments.reduce((total, segment) => total + (Number(segment.distanceFt) || 0), 0)),
+        lastAccuracy: session.lastAccuracy || ""
+      };
     }
 
     function clearRecorderSessions() {
@@ -4063,13 +4231,15 @@
         return;
       }
 
-      localStorage.removeItem(RECORDER_STORAGE_KEY);
+      getRecorderSessions().forEach((session) => deleteRecorderSession(session.routeId));
+      localStorage.setItem(RECORDER_STORAGE_KEY, JSON.stringify([]));
       setRecorderMessage("Local recorder sessions cleared.", "ok");
+      updateRecorderUi();
     }
 
     function downloadRecorderGeoJson() {
       const sessions = getRecorderSessions();
-      const activeSession = recorderState.status === "stopped" && recorderState.segments.length ? [recorderState] : [];
+      const activeSession = recorderState.status === "stopped" && recorderState.segments.length ? [normalizeRecorderSession(createRecorderSessionPayload(recorderState))] : [];
       const allSessions = sessions.length ? sessions : activeSession;
 
       if (!allSessions.length) {
@@ -4079,7 +4249,7 @@
 
       const features = [];
       allSessions.forEach((session) => {
-        (session.segments || []).forEach((segment) => {
+        (session.generatedSegments || session.segments || []).forEach((segment) => {
           features.push({
             type: "Feature",
             geometry: {
@@ -4091,10 +4261,12 @@
               segmentId: segment.segmentId,
               routeId: segment.routeId || session.sessionId,
               routeName: session.routeName || "",
-              recorderName: session.recorderName || "",
+              inspectorName: session.inspectorName || session.recorderName || "",
+              recorderName: session.recorderName || session.inspectorName || "",
               email: session.email || "",
               startedAt: session.startedAt,
               endedAt: session.endedAt,
+              rawPointCount: (session.rawPoints || session.points || []).length,
               condition: segment.condition,
               conditionClass: segment.conditionClass,
               conditionLabel: segment.conditionLabel,
