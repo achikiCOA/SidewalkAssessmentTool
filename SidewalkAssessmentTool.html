@@ -1532,7 +1532,7 @@
           <summary>Local Recorder Sessions</summary>
           <p>Recorder sessions save on this device first. Export GeoJSON for ArcGIS or hand it to a developer for SharePoint/Microsoft Lists sync.</p>
           <div class="button-row">
-            <button class="secondary" type="button" id="downloadRecorderGeoJsonButton">Export GeoJSON</button>
+            <button class="secondary" type="button" id="exportAllRecorderGeoJsonButton">Export All Sessions</button>
             <button class="secondary" type="button" id="clearRecorderSessionsButton">Clear Local Recorder Data</button>
           </div>
         </details>
@@ -1552,7 +1552,7 @@
             <button class="secondary" type="button" id="addRecorderNoteButton">Add Note</button>
             <button class="secondary" type="button" id="captureRecorderPhotoButton">Capture Photo</button>
             <input class="field-hidden" type="file" id="recorderPhoto" accept="image/*" capture="environment" multiple>
-            <button class="secondary" type="button" id="downloadRecorderGeoJsonTrayButton">Export GeoJSON</button>
+            <button class="secondary" type="button" id="exportCurrentRecorderGeoJsonButton">Export Current</button>
           </div>
         </div>
       </div>
@@ -1562,7 +1562,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-09-recorder-local-persistence-v1";
+    const APP_VERSION = "2026-06-09-recorder-geojson-export-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
     const RECORDER_ACTIVE_STORAGE_KEY = "sidewalkRecorderActiveSession";
@@ -2513,8 +2513,8 @@
       field("addRecorderNoteButton").addEventListener("click", addRecorderNote);
       field("captureRecorderPhotoButton").addEventListener("click", () => field("recorderPhoto").click());
       field("recorderPhoto").addEventListener("change", captureRecorderPhotos);
-      field("downloadRecorderGeoJsonButton").addEventListener("click", downloadRecorderGeoJson);
-      field("downloadRecorderGeoJsonTrayButton").addEventListener("click", downloadRecorderGeoJson);
+      field("exportAllRecorderGeoJsonButton").addEventListener("click", exportAllRecorderGeoJson);
+      field("exportCurrentRecorderGeoJsonButton").addEventListener("click", exportCurrentRecorderGeoJson);
       field("clearRecorderSessionsButton").addEventListener("click", clearRecorderSessions);
       document.querySelectorAll(".condition-toggle").forEach((button) => {
         button.addEventListener("click", () => setRecorderCondition(button.dataset.condition));
@@ -4237,18 +4237,60 @@
       updateRecorderUi();
     }
 
-    function downloadRecorderGeoJson() {
+    function exportCurrentRecorderGeoJson() {
+      const currentSession = getCurrentRecorderExportSession();
+      if (!currentSession) {
+        setRecorderMessage("No current recorder session is available to export.", "error");
+        return;
+      }
+
+      exportRecorderGeoJsonSessions([currentSession]);
+    }
+
+    function exportAllRecorderGeoJson() {
       const sessions = getRecorderSessions();
-      const activeSession = recorderState.status === "stopped" && recorderState.segments.length ? [normalizeRecorderSession(createRecorderSessionPayload(recorderState))] : [];
-      const allSessions = sessions.length ? sessions : activeSession;
+      const currentSession = getCurrentRecorderExportSession();
+      const allSessions = sessions.length ? sessions : currentSession ? [currentSession] : [];
 
       if (!allSessions.length) {
         setRecorderMessage("No saved recorder sessions are available to export.", "error");
         return;
       }
 
+      exportRecorderGeoJsonSessions(allSessions);
+    }
+
+    function downloadRecorderGeoJson() {
+      exportAllRecorderGeoJson();
+    }
+
+    function getCurrentRecorderExportSession() {
+      if (!recorderState.points.length) return null;
+      const state = Object.assign({}, recorderState, {
+        segments: recorderState.segments.length ? recorderState.segments : rebuildSegmentsFromPoints(recorderState.points)
+      });
+      if (!state.segments.length) return null;
+      return normalizeRecorderSession(createRecorderSessionPayload(state));
+    }
+
+    function exportRecorderGeoJsonSessions(sessions) {
+      try {
+        const geojson = buildGeoJsonFromSessions(sessions);
+        const validation = validateGeoJson(geojson);
+        if (!validation.ok) {
+          setRecorderMessage("GeoJSON export failed: " + validation.error, "error");
+          return;
+        }
+        downloadGeoJson(geojson);
+        setRecorderMessage("GeoJSON exported for ArcGIS review.", "ok");
+      } catch (error) {
+        setRecorderMessage(error.message || "GeoJSON export failed.", "error");
+      }
+    }
+
+    function buildGeoJsonFromSessions(sessions) {
       const features = [];
-      allSessions.forEach((session) => {
+      (sessions || []).forEach((session) => {
         (session.generatedSegments || session.segments || []).forEach((segment) => {
           features.push({
             type: "Feature",
@@ -4260,53 +4302,87 @@
               sessionId: session.sessionId,
               segmentId: segment.segmentId,
               routeId: segment.routeId || session.sessionId,
-              routeName: session.routeName || "",
               inspectorName: session.inspectorName || session.recorderName || "",
-              recorderName: session.recorderName || session.inspectorName || "",
-              email: session.email || "",
-              startedAt: session.startedAt,
-              endedAt: session.endedAt,
-              rawPointCount: (session.rawPoints || session.points || []).length,
               condition: segment.condition,
-              conditionClass: segment.conditionClass,
-              conditionLabel: segment.conditionLabel,
-              score: segment.score,
+              conditionClass: segment.conditionClass || recorderConditionClass(segment.condition),
+              score: segment.score || recorderConditionScore(segment.condition),
+              priorityClass: recorderPriorityClass(segment.condition),
+              lengthMeters: segment.lengthMeters,
+              averageAccuracy: segment.averageAccuracy || segment.averageAccuracyMeters || "",
               startTime: segment.startTime,
               endTime: segment.endTime,
-              pointCount: segment.pointCount,
-              lengthMeters: segment.lengthMeters,
-              distanceFt: segment.distanceFt,
-              averageAccuracy: segment.averageAccuracy,
-              averageAccuracyMeters: segment.averageAccuracyMeters,
-              source: segment.source || RECORDER_SOURCE,
-              reviewNeeded: segment.reviewNeeded,
-              reviewStatus: segment.reviewStatus,
-              notes: segment.notes || "",
-              recorderNoteCount: (session.notes || []).length,
-              recorderPhotoCount: (session.photos || []).length,
-              recorderNotes: (session.notes || []).map((note) => note.text).join("; "),
-              recorderPhotoNames: (session.photos || []).map((photo) => photo.name).join("; ")
+              notes: buildRecorderSegmentNotes(session, segment),
+              reviewed: false
             }
           });
         });
       });
 
-      const geojson = {
+      return {
         type: "FeatureCollection",
         name: "sidewalk_recorder_segments",
         features: features
       };
+    }
+
+    function validateGeoJson(geojson) {
+      if (!geojson || geojson.type !== "FeatureCollection" || !Array.isArray(geojson.features)) {
+        return { ok: false, error: "Output is not a valid FeatureCollection." };
+      }
+
+      if (!geojson.features.length) {
+        return { ok: false, error: "There are no valid segments to export." };
+      }
+
+      for (let i = 0; i < geojson.features.length; i++) {
+        const feature = geojson.features[i];
+        if (!feature || feature.type !== "Feature") {
+          return { ok: false, error: "Feature " + (i + 1) + " is invalid." };
+        }
+        if (!feature.geometry || feature.geometry.type !== "LineString") {
+          return { ok: false, error: "Feature " + (i + 1) + " is not a LineString." };
+        }
+        const coordinates = feature.geometry.coordinates;
+        if (!Array.isArray(coordinates) || coordinates.length < 2) {
+          return { ok: false, error: "Feature " + (i + 1) + " must have at least 2 coordinates." };
+        }
+        for (let j = 0; j < coordinates.length; j++) {
+          const coordinate = coordinates[j];
+          if (!Array.isArray(coordinate) || coordinate.length < 2 || !Number.isFinite(Number(coordinate[0])) || !Number.isFinite(Number(coordinate[1]))) {
+            return { ok: false, error: "Feature " + (i + 1) + " has an invalid coordinate." };
+          }
+        }
+      }
+
+      return { ok: true };
+    }
+
+    function downloadGeoJson(geojson) {
+      const filename = "sidewalk-segments-" + new Date().toISOString().slice(0, 10) + ".geojson";
 
       const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: "application/geo+json;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "sidewalk-recorder-segments.geojson";
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      setRecorderMessage("GeoJSON exported for ArcGIS review.", "ok");
+    }
+
+    function buildRecorderSegmentNotes(session, segment) {
+      const segmentNotes = [segment.notes || ""].filter(Boolean);
+      const recorderNotes = (session.notes || []).map((note) => note.text).filter(Boolean);
+      return segmentNotes.concat(recorderNotes).join("; ");
+    }
+
+    function recorderPriorityClass(condition) {
+      return {
+        Green: "Low",
+        Yellow: "Medium",
+        Red: "High"
+      }[condition] || "Low";
     }
 
     function setRecorderMessage(text, type) {
