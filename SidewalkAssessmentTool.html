@@ -1558,7 +1558,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-09-recorder-scaffold-v1";
+    const APP_VERSION = "2026-06-09-recorder-engine-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
@@ -1623,6 +1623,9 @@
       priorityPedestrianMedium: 5,
       prioritySchoolTransit: 10
     };
+    const RECORDER_DEBUG = false;
+    const RECORDER_MAX_ACCURACY_METERS = 15;
+    const RECORDER_MIN_DISTANCE_METERS = 1;
 
     let map = null;
     let marker = null;
@@ -2495,7 +2498,7 @@
       field("backToIntroFromRecorder").addEventListener("click", backToIntroFromRecorder);
       field("improveRecorderGpsButton").addEventListener("click", improveRecorderGpsStart);
       field("startRecordingButton").addEventListener("click", handleStartPauseRecording);
-      field("stopRecordingButton").addEventListener("click", stopRecording);
+      field("stopRecordingButton").addEventListener("click", stopRecorder);
       field("addRecorderNoteButton").addEventListener("click", addRecorderNote);
       field("captureRecorderPhotoButton").addEventListener("click", () => field("recorderPhoto").click());
       field("recorderPhoto").addEventListener("change", captureRecorderPhotos);
@@ -3410,7 +3413,7 @@
       recorderResizeObserver.observe(el);
     }
 
-    function startRecording() {
+    function startRecorder() {
       if (!navigator.geolocation) {
         setRecorderMessage("This browser does not support GPS recording.", "error");
         return;
@@ -3450,12 +3453,17 @@
         "ok");
 
       recorderWatchId = navigator.geolocation.watchPosition(
-        handleRecorderPosition,
+        handleGpsPoint,
         () => setRecorderMessage("GPS access was not available. Check location permission and try again.", "error"),
         { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
       );
 
       updateRecorderUi();
+      debugRecorder("Recorder started", { sessionId: recorderState.sessionId });
+    }
+
+    function startRecording() {
+      startRecorder();
     }
 
     function improveRecorderGpsStart() {
@@ -3548,7 +3556,7 @@
         return;
       }
 
-      startRecording();
+      startRecorder();
     }
 
     function togglePauseRecording() {
@@ -3563,7 +3571,7 @@
       updateRecorderUi();
     }
 
-    function stopRecording() {
+    function stopRecorder() {
       if (recorderState.status === "idle") return;
 
       stopRecorderWatch();
@@ -3573,6 +3581,7 @@
         recorderState.endedAt = "";
         updateRecorderUi();
         setRecorderMessage("Recording stopped, but there were not enough GPS points to create a line segment.", "error");
+        debugRecorder("Recorder stopped without enough points", { pointCount: recorderState.points.length });
         return;
       }
 
@@ -3586,6 +3595,15 @@
       renderRecorderReviewList();
       updateRecorderUi();
       setRecorderMessage("Recording saved locally. Export GeoJSON when you are ready to review it in GIS.", "ok");
+      debugRecorder("Recorder stopped", {
+        pointCount: recorderState.points.length,
+        segmentCount: recorderState.segments.length,
+        distanceFt: recorderState.distanceFt
+      });
+    }
+
+    function stopRecording() {
+      stopRecorder();
     }
 
     function stopRecorderWatch() {
@@ -3595,17 +3613,11 @@
       }
     }
 
-    function handleRecorderPosition(position) {
+    function handleGpsPoint(position) {
       if (recorderState.status !== "recording") return;
 
       const accuracy = Number(position.coords.accuracy);
       recorderState.lastAccuracy = Number.isFinite(accuracy) ? Math.round(accuracy) : null;
-
-      if (Number.isFinite(accuracy) && accuracy > 50) {
-        updateRecorderUi();
-        setRecorderMessage("GPS point skipped because accuracy is about " + Math.round(accuracy) + " m. Keep walking or wait for a better fix.", "error");
-        return;
-      }
 
       const point = {
         pointId: makeId("RPT"),
@@ -3618,16 +3630,9 @@
         condition: recorderState.condition
       };
 
-      const previous = recorderState.points[recorderState.points.length - 1];
-      if (previous) {
-        const distanceFt = calculateSegmentLengthFt(
-          { lat: previous.latitude, lng: previous.longitude },
-          { lat: point.latitude, lng: point.longitude }
-        );
-        if (distanceFt < 6) {
-          updateRecorderUi();
-          return;
-        }
+      if (!shouldAcceptGpsPoint(point)) {
+        updateRecorderUi();
+        return;
       }
 
       recorderState.points.push(point);
@@ -3638,6 +3643,59 @@
 
       if (recorderMap && recorderState.points.length === 1) {
         recorderMap.setView([point.latitude, point.longitude], recorderState.lastAccuracy && recorderState.lastAccuracy <= 20 ? 21 : 20);
+      }
+      debugRecorder("GPS point accepted", point);
+    }
+
+    function handleRecorderPosition(position) {
+      handleGpsPoint(position);
+    }
+
+    function shouldAcceptGpsPoint(point) {
+      const accuracy = Number(point.accuracyMeters);
+      if (Number.isFinite(accuracy) && accuracy > RECORDER_MAX_ACCURACY_METERS) {
+        setRecorderMessage("GPS point skipped because accuracy is about " + Math.round(accuracy) + " m. Wait for 15 m or better.", "error");
+        debugRecorder("GPS point rejected for accuracy", { accuracyMeters: accuracy });
+        return false;
+      }
+
+      const previous = recorderState.points[recorderState.points.length - 1];
+      if (previous) {
+        const distanceMeters = calculateDistanceMeters(previous, point);
+        if (distanceMeters < RECORDER_MIN_DISTANCE_METERS) {
+          debugRecorder("GPS point rejected for distance", { distanceMeters: distanceMeters });
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    function calculateDistanceMeters(a, b) {
+      if (!a || !b) return 0;
+      const aLat = Number(a.latitude ?? a.lat);
+      const aLng = Number(a.longitude ?? a.lng);
+      const bLat = Number(b.latitude ?? b.lat);
+      const bLng = Number(b.longitude ?? b.lng);
+      if (![aLat, aLng, bLat, bLng].every(Number.isFinite)) return 0;
+
+      const earthRadiusMeters = 6371000;
+      const lat1 = aLat * Math.PI / 180;
+      const lat2 = bLat * Math.PI / 180;
+      const deltaLat = (bLat - aLat) * Math.PI / 180;
+      const deltaLng = (bLng - aLng) * Math.PI / 180;
+      const haversine = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+        Math.cos(lat1) * Math.cos(lat2) *
+        Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+      return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+    }
+
+    function debugRecorder(message, data) {
+      if (!RECORDER_DEBUG) return;
+      if (data === undefined) {
+        console.debug("[Recorder] " + message);
+      } else {
+        console.debug("[Recorder] " + message, data);
       }
     }
 
