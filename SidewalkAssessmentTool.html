@@ -1035,6 +1035,10 @@
       </p>
       <p>Common field checks include 48 in. minimum pedestrian access route width in PROWAG, sidewalk running slope less than 5%, maximum cross slope of 2%, curb ramp running slope up to 8.3%, and surface openings or vertical changes that may affect accessibility. Always verify current federal, state, and local standards before final design or enforcement.</p>
     </details>
+    <details class="reference-panel">
+      <summary>Privacy Notice</summary>
+      <p>This tool can collect GPS coordinates, walking paths, photos, optional notes, and optional contact information. Data is saved in this browser first. If an upload endpoint is configured, submitted point inspections may be sent to that endpoint. Recorder GeoJSON exports do not include inspector names unless you turn that option on before exporting.</p>
+    </details>
     <div class="mode-actions">
       <button class="mode-card-button" type="button" id="startAssessmentButton">
         Point Inspection
@@ -1577,6 +1581,7 @@
         <details class="reference-panel">
           <summary>Local Recorder Sessions</summary>
           <p>Recorder sessions save on this device first. Export GeoJSON for ArcGIS or hand it to a developer for SharePoint/Microsoft Lists sync.</p>
+          <label><input id="includePersonalInfoInGeoJson" type="checkbox"> Include inspector name in GeoJSON export</label>
           <div class="button-row">
             <button class="secondary" type="button" id="exportAllRecorderGeoJsonButton">Export All Sessions</button>
             <button class="secondary" type="button" id="clearRecorderSessionsButton">Clear Local Recorder Data</button>
@@ -1607,8 +1612,8 @@
 
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
-    const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-09-recorder-review-workflow-v1";
+    const DEFAULT_UPLOAD_URL = "";
+    const APP_VERSION = "2026-06-09-security-hardening-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
     const RECORDER_ACTIVE_STORAGE_KEY = "sidewalkRecorderActiveSession";
@@ -1681,6 +1686,11 @@
     const RECORDER_SEGMENT_GAP_METERS = 30;
     const RECORDER_SEGMENT_GAP_MS = 60000;
     const RECORDER_SOURCE = "continuous_recorder";
+    const MAX_PHOTO_COUNT = 8;
+    const MAX_PHOTO_BYTES = 6 * 1024 * 1024;
+    const MAX_TOTAL_PHOTO_BYTES = 20 * 1024 * 1024;
+    const MAX_LOCAL_STORAGE_WARN_BYTES = 4 * 1024 * 1024;
+    const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 
     let map = null;
     let marker = null;
@@ -2592,7 +2602,12 @@
     function bindSettings() {
       field("uploadUrl").value = getUploadUrl();
       field("saveSettingsButton").addEventListener("click", () => {
-        localStorage.setItem(UPLOAD_URL_KEY, field("uploadUrl").value.trim());
+        const uploadUrl = field("uploadUrl").value.trim();
+        if (uploadUrl && !isValidUploadUrl(uploadUrl)) {
+          setMessage("Upload URL was not saved. Use a valid HTTPS endpoint URL.", "error");
+          return;
+        }
+        localStorage.setItem(UPLOAD_URL_KEY, uploadUrl);
         updateUploadStatus();
         setMessage("Upload settings saved.", "ok");
       });
@@ -2626,11 +2641,11 @@
       const draft = {
         savedAt: new Date().toISOString(),
         reportType: field("reportType").value,
-        reporterName: field("reporterName").value.trim(),
-        email: field("email").value.trim(),
+        reporterName: sanitizeTextInput(field("reporterName").value),
+        email: sanitizeTextInput(field("email").value),
         latitude: field("latitude").value,
         longitude: field("longitude").value,
-        address: field("address").value,
+        address: sanitizeTextInput(field("address").value),
         currentAccuracy: currentAccuracy,
         locationLocked: locationLocked,
         locationConfirmed: locationConfirmed,
@@ -2646,7 +2661,7 @@
         detectableWarning: field("detectableWarning").value,
         pedestrianVolume: field("pedestrianVolume").value,
         schoolTransitProximity: field("schoolTransitProximity").value,
-        comments: field("comments").value.trim(),
+        comments: sanitizeTextInput(field("comments").value),
         photoCaptions: getPhotoCaptions(),
         photoNames: Array.from(field("photo").files || []).map((photo) => photo.name),
         segmentStart: segmentStart,
@@ -2785,7 +2800,19 @@
       reviewItems.forEach(([label, value, sectionId]) => {
         const div = document.createElement("div");
         div.className = "review-item";
-        div.innerHTML = "<div class=\"review-actions\"><strong>" + escapeHtml(label) + "</strong><button class=\"secondary\" type=\"button\" data-edit-section=\"" + escapeHtml(sectionId) + "\">Edit</button></div><span>" + escapeHtml(value) + "</span>";
+        const actions = document.createElement("div");
+        actions.className = "review-actions";
+        const strong = document.createElement("strong");
+        strong.textContent = label;
+        const button = document.createElement("button");
+        button.className = "secondary";
+        button.type = "button";
+        button.dataset.editSection = sectionId;
+        button.textContent = "Edit";
+        const span = document.createElement("span");
+        span.textContent = value;
+        actions.append(strong, button);
+        div.append(actions, span);
         review.appendChild(div);
       });
 
@@ -2868,6 +2895,15 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
+    }
+
+    function sanitizeTextInput(value) {
+      return String(value === undefined || value === null ? "" : value)
+        .replace(/[\u0000-\u001F\u007F]/g, " ")
+        .replace(/[<>]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 2000);
     }
 
     async function submitReport() {
@@ -3071,8 +3107,8 @@
 
     function saveContactInfo() {
       const contact = {
-        reporterName: field("reporterName").value.trim(),
-        email: field("email").value.trim()
+        reporterName: sanitizeTextInput(field("reporterName").value),
+        email: sanitizeTextInput(field("email").value)
       };
       localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(contact));
       updateContactSavedNote();
@@ -3096,6 +3132,10 @@
     async function buildReport() {
       const scores = calculateScores();
       const photos = Array.from(field("photo").files || []);
+      const photoValidation = validatePhotoFiles(photos);
+      if (!photoValidation.ok) {
+        throw new Error(photoValidation.message);
+      }
       const reportType = field("reportType").value;
       const segmentLength = segmentStart && segmentEnd ? Math.round(calculateSegmentLengthFt(segmentStart, segmentEnd)) : "";
       const photoItems = await Promise.all(photos.map(async (photo, index) => {
@@ -3141,7 +3181,7 @@
         comments: field("comments").value.trim(),
         photoName: photoItems.map((photo) => photo.name).join("; "),
         photoType: photoItems.map((photo) => photo.type).join("; "),
-        photoCaptions: photoItems.map((photo) => photo.caption).filter(Boolean).join("; "),
+        photoCaptions: sanitizeTextInput(photoItems.map((photo) => photo.caption).filter(Boolean).join("; ")),
         photoSize: photoItems.reduce((total, photo) => total + photo.size, 0),
         photoCount: photoItems.length,
         photoDataList: photoItems,
@@ -3161,6 +3201,16 @@
       photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
       photoPreviewUrls = [];
       previewGrid.innerHTML = "";
+
+      const validation = validatePhotoFiles(photos);
+      if (!validation.ok) {
+        field("photoStatus").textContent = validation.message;
+        field("photoCountStatus").textContent = "Fix photos before submitting.";
+        field("photo").value = "";
+        previewGrid.style.display = "none";
+        setMessage(validation.message, "error");
+        return;
+      }
 
       if (!photos.length) {
         field("photoStatus").textContent = "No photo selected.";
@@ -3198,7 +3248,7 @@
 
     function getPhotoCaption(index) {
       const input = field("photoCaption" + index);
-      return input ? input.value.trim() : "";
+      return input ? sanitizeTextInput(input.value) : "";
     }
 
     function getPhotoCaptions() {
@@ -3259,6 +3309,9 @@
     async function uploadReport(report) {
       const uploadUrl = getUploadUrl();
       if (!uploadUrl) return false;
+      if (!isValidUploadUrl(uploadUrl)) {
+        throw new Error("Upload URL is invalid. Use a valid HTTPS endpoint.");
+      }
 
       if (uploadUrl.indexOf("script.google.com") !== -1) {
         await uploadGoogleReport(uploadUrl, report);
@@ -3324,6 +3377,9 @@
     }
 
     function postJsonNoCors(uploadUrl, data) {
+      if (!isValidUploadUrl(uploadUrl)) {
+        return Promise.reject(new Error("Upload URL is invalid."));
+      }
       return fetch(uploadUrl, {
         method: "POST",
         mode: "no-cors",
@@ -3352,6 +3408,7 @@
       try {
         reports.push(localReport);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+        warnIfLocalStorageLarge(setMessage);
       } catch (error) {
         console.warn("Local report backup was skipped.", error);
       }
@@ -3369,7 +3426,18 @@
     }
 
     function getUploadUrl() {
-      return localStorage.getItem(UPLOAD_URL_KEY) || DEFAULT_UPLOAD_URL || "";
+      const uploadUrl = localStorage.getItem(UPLOAD_URL_KEY) || DEFAULT_UPLOAD_URL || "";
+      return isValidUploadUrl(uploadUrl) ? uploadUrl : "";
+    }
+
+    function isValidUploadUrl(url) {
+      if (!url) return true;
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === "https:" && Boolean(parsed.hostname);
+      } catch (error) {
+        return false;
+      }
     }
 
     function updateUploadStatus() {
@@ -3497,9 +3565,9 @@
       recorderState.status = "recording";
       recorderState.condition = "Green";
       recorderState.startedAt = new Date().toISOString();
-      recorderState.routeName = field("recorderRouteName").value.trim();
-      recorderState.recorderName = field("recorderName").value.trim();
-      recorderState.email = field("recorderEmail").value.trim();
+      recorderState.routeName = sanitizeTextInput(field("recorderRouteName").value);
+      recorderState.recorderName = sanitizeTextInput(field("recorderName").value);
+      recorderState.email = sanitizeTextInput(field("recorderEmail").value);
       recorderState.lastAccuracy = recorderStartPoint ? recorderStartPoint.accuracyMeters : null;
       if (recorderStartPoint) {
         recorderState.points.push(Object.assign({}, recorderStartPoint, {
@@ -3816,7 +3884,7 @@
       const note = prompt("Recorder note", "");
       if (note === null) return;
 
-      const text = note.trim();
+      const text = sanitizeTextInput(note);
       if (!text) {
         setRecorderMessage("Note was empty, so nothing was added.", "");
         return;
@@ -3839,6 +3907,12 @@
     function captureRecorderPhotos() {
       const files = Array.from(field("recorderPhoto").files || []);
       if (!files.length) return;
+      const validation = validatePhotoFiles(files);
+      if (!validation.ok) {
+        field("recorderPhoto").value = "";
+        setRecorderMessage(validation.message, "error");
+        return;
+      }
 
       const lastPoint = recorderState.points[recorderState.points.length - 1] || recorderStartPoint || null;
       files.forEach((file) => {
@@ -3857,6 +3931,36 @@
       setRecorderMessage(files.length + " recorder photo" + (files.length === 1 ? "" : "s") + " attached locally.", "ok");
       saveActiveRecorderState();
       updateRecorderUi();
+    }
+
+    function validatePhotoFiles(files) {
+      if (!files || !files.length) return { ok: true };
+
+      if (files.length > MAX_PHOTO_COUNT) {
+        return { ok: false, message: "Too many photos. Limit photos to " + MAX_PHOTO_COUNT + " per report." };
+      }
+
+      const totalBytes = files.reduce((total, file) => total + file.size, 0);
+      if (totalBytes > MAX_TOTAL_PHOTO_BYTES) {
+        return { ok: false, message: "Photos are too large together. Limit total photo size to about " + Math.round(MAX_TOTAL_PHOTO_BYTES / 1024 / 1024) + " MB." };
+      }
+
+      for (const file of files) {
+        if (!isAllowedPhotoFile(file)) {
+          return { ok: false, message: "Unsupported photo type: " + (file.type || file.name) + ". Use JPG, PNG, WebP, HEIC, or HEIF." };
+        }
+
+        if (file.size > MAX_PHOTO_BYTES) {
+          return { ok: false, message: "Photo is too large: " + file.name + ". Limit each photo to about " + Math.round(MAX_PHOTO_BYTES / 1024 / 1024) + " MB." };
+        }
+      }
+
+      return { ok: true };
+    }
+
+    function isAllowedPhotoFile(file) {
+      if (ALLOWED_PHOTO_TYPES.includes(file.type)) return true;
+      return /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || "");
     }
 
     function rebuildSegmentsFromPoints(points, routeId = recorderState.sessionId || "") {
@@ -4006,28 +4110,42 @@
 
       const reviewSegments = getFilteredReviewSegments();
       if (!reviewSegments.length) {
-        list.innerHTML = "<p class=\"help\">No segments match the current review filter.</p>";
+        list.replaceChildren();
+        const empty = document.createElement("p");
+        empty.className = "help";
+        empty.textContent = "No segments match the current review filter.";
+        list.appendChild(empty);
         return;
       }
 
-      list.innerHTML = "";
+      list.replaceChildren();
       reviewSegments.forEach((segment) => {
         const item = document.createElement("div");
         item.className = "review-segment" + (segment.condition === "Red" ? " red" : "") + (segment.reviewed ? " reviewed" : "");
-        item.innerHTML = "<div><strong>" + escapeHtml(segment.conditionLabel) + (segment.reviewed ? " - Reviewed" : "") + "</strong></div>" +
-          "<div class=\"review-detail-grid\">" +
-          reviewDetailHtml("Condition", segment.conditionClass || recorderConditionClass(segment.condition)) +
-          reviewDetailHtml("Length", (segment.lengthMeters || 0) + " m / " + (segment.distanceFt || 0) + " ft") +
-          reviewDetailHtml("Score", segment.score || recorderConditionScore(segment.condition)) +
-          reviewDetailHtml("GPS Accuracy", (segment.averageAccuracy || segment.averageAccuracyMeters || "--") + " m") +
-          reviewDetailHtml("Start", formatRecorderDateTime(segment.startTime || segment.startTimestamp)) +
-          reviewDetailHtml("End", formatRecorderDateTime(segment.endTime || segment.endTimestamp)) +
-          reviewDetailHtml("Notes", segment.notes || "--") +
-          "</div>" +
-          "<div class=\"review-segment-actions\"><button class=\"secondary\" type=\"button\" data-review-action=\"zoom\">Zoom To</button><button class=\"secondary\" type=\"button\" data-review-action=\"review\">Mark Reviewed</button><button type=\"button\" data-review-action=\"document\">Create Detailed Inspection</button></div>";
-        item.querySelector('[data-review-action="zoom"]').addEventListener("click", () => zoomToRecorderSegment(segment.segmentId));
-        item.querySelector('[data-review-action="review"]').addEventListener("click", () => markRecorderSegmentReviewed(segment.segmentId));
-        item.querySelector('[data-review-action="document"]').addEventListener("click", () => documentRecorderSegment(segment.segmentId));
+        const title = document.createElement("div");
+        const strong = document.createElement("strong");
+        strong.textContent = segment.conditionLabel + (segment.reviewed ? " - Reviewed" : "");
+        title.appendChild(strong);
+
+        const detailGrid = document.createElement("div");
+        detailGrid.className = "review-detail-grid";
+        [
+          ["Condition", segment.conditionClass || recorderConditionClass(segment.condition)],
+          ["Length", (segment.lengthMeters || 0) + " m / " + (segment.distanceFt || 0) + " ft"],
+          ["Score", segment.score || recorderConditionScore(segment.condition)],
+          ["GPS Accuracy", (segment.averageAccuracy || segment.averageAccuracyMeters || "--") + " m"],
+          ["Start", formatRecorderDateTime(segment.startTime || segment.startTimestamp)],
+          ["End", formatRecorderDateTime(segment.endTime || segment.endTimestamp)],
+          ["Notes", segment.notes || "--"]
+        ].forEach(([label, value]) => detailGrid.appendChild(createReviewDetail(label, value)));
+
+        const actions = document.createElement("div");
+        actions.className = "review-segment-actions";
+        const zoomButton = createActionButton("Zoom To", "secondary", () => zoomToRecorderSegment(segment.segmentId));
+        const reviewButton = createActionButton("Mark Reviewed", "secondary", () => markRecorderSegmentReviewed(segment.segmentId));
+        const documentButton = createActionButton("Create Detailed Inspection", "", () => documentRecorderSegment(segment.segmentId));
+        actions.append(zoomButton, reviewButton, documentButton);
+        item.append(title, detailGrid, actions);
         list.appendChild(item);
       });
     }
@@ -4048,8 +4166,24 @@
       renderRecorderReviewList();
     }
 
-    function reviewDetailHtml(label, value) {
-      return "<div class=\"review-detail\"><span>" + escapeHtml(label) + "</span><strong>" + escapeHtml(value) + "</strong></div>";
+    function createReviewDetail(label, value) {
+      const div = document.createElement("div");
+      div.className = "review-detail";
+      const span = document.createElement("span");
+      span.textContent = label;
+      const strong = document.createElement("strong");
+      strong.textContent = value;
+      div.append(span, strong);
+      return div;
+    }
+
+    function createActionButton(text, className, onClick) {
+      const button = document.createElement("button");
+      if (className) button.className = className;
+      button.type = "button";
+      button.textContent = text;
+      button.addEventListener("click", onClick);
+      return button;
     }
 
     function formatRecorderDateTime(value) {
@@ -4170,8 +4304,8 @@
 
     function saveRecorderContact() {
       const contact = {
-        reporterName: field("recorderName").value.trim(),
-        email: field("recorderEmail").value.trim()
+        reporterName: sanitizeTextInput(field("recorderName").value),
+        email: sanitizeTextInput(field("recorderEmail").value)
       };
       localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(contact));
     }
@@ -4201,6 +4335,7 @@
       if (recorderState.status !== "recording" && recorderState.status !== "paused") return;
       try {
         localStorage.setItem(RECORDER_ACTIVE_STORAGE_KEY, JSON.stringify(createRecorderSessionPayload(recorderState)));
+        warnIfLocalStorageLarge(setRecorderMessage);
       } catch (error) {
         debugRecorder("Active recorder session could not be saved", error);
       }
@@ -4270,6 +4405,7 @@
         sessions.push(normalized);
       }
       localStorage.setItem(RECORDER_STORAGE_KEY, JSON.stringify(sessions));
+      warnIfLocalStorageLarge(setRecorderMessage);
       updateRecorderUi();
       return normalized;
     }
@@ -4292,8 +4428,25 @@
       const updated = normalizeRecorderSession(Object.assign({}, sessions[index], patch));
       sessions[index] = updated;
       localStorage.setItem(RECORDER_STORAGE_KEY, JSON.stringify(sessions));
+      warnIfLocalStorageLarge(setRecorderMessage);
       updateRecorderUi();
       return updated;
+    }
+
+    function getLocalStorageSizeBytes() {
+      let total = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        total += key.length + String(localStorage.getItem(key) || "").length;
+      }
+      return total * 2;
+    }
+
+    function warnIfLocalStorageLarge(messageFn) {
+      const bytes = getLocalStorageSizeBytes();
+      if (bytes <= MAX_LOCAL_STORAGE_WARN_BYTES) return;
+      const mb = Math.round(bytes / 1024 / 1024 * 10) / 10;
+      messageFn("Local browser storage is getting large (" + mb + " MB). Export and clear old saved sessions when possible.", "error");
     }
 
     function normalizeRecorderSession(session) {
@@ -4398,6 +4551,7 @@
 
     function buildGeoJsonFromSessions(sessions) {
       const features = [];
+      const includePersonalInfo = Boolean(field("includePersonalInfoInGeoJson") && field("includePersonalInfoInGeoJson").checked);
       (sessions || []).forEach((session) => {
         (session.generatedSegments || session.segments || []).forEach((segment) => {
           features.push({
@@ -4410,7 +4564,7 @@
               sessionId: session.sessionId,
               segmentId: segment.segmentId,
               routeId: segment.routeId || session.sessionId,
-              inspectorName: session.inspectorName || session.recorderName || "",
+              inspectorName: includePersonalInfo ? session.inspectorName || session.recorderName || "" : "",
               condition: segment.condition,
               conditionClass: segment.conditionClass || recorderConditionClass(segment.condition),
               score: segment.score || recorderConditionScore(segment.condition),
