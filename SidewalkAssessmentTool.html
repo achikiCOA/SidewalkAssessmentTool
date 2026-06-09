@@ -786,12 +786,15 @@
     .recorder-actions {
       position: sticky;
       bottom: 0;
-      z-index: 30;
+      z-index: 1200;
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 10px;
-      padding-top: 10px;
+      margin: 12px -14px -14px;
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
       background: #fff;
+      border-top: 1px solid var(--line);
+      box-shadow: 0 -8px 20px rgba(20, 32, 52, 0.08);
     }
 
     .review-segment-list {
@@ -802,7 +805,7 @@
 
     .review-segment {
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: 1fr;
       gap: 8px;
       align-items: center;
       padding: 10px;
@@ -810,6 +813,12 @@
       border-left: 7px solid #facc15;
       border-radius: 8px;
       background: #fff;
+    }
+
+    .review-segment-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
     }
 
     .review-segment.red {
@@ -1519,6 +1528,7 @@
         </details>
 
         <div class="recorder-actions">
+          <button class="secondary" type="button" id="improveRecorderGpsButton">Improve GPS</button>
           <button type="button" id="startRecordingButton">Start</button>
           <button class="secondary" type="button" id="pauseRecordingButton" disabled>Pause</button>
           <button class="secondary" type="button" id="stopRecordingButton" disabled>Stop</button>
@@ -1618,6 +1628,9 @@
     let recorderMap = null;
     let recorderResizeObserver = null;
     let recorderWatchId = null;
+    let recorderStartWatchId = null;
+    let recorderStartPoint = null;
+    let recorderStartFixActive = false;
     let recorderState = createEmptyRecorderState();
     let recorderLayers = [];
 
@@ -2462,6 +2475,7 @@
       field("startAssessmentButton").addEventListener("click", startAssessment);
       field("startRecorderButton").addEventListener("click", startRecorderMode);
       field("backToIntroFromRecorder").addEventListener("click", backToIntroFromRecorder);
+      field("improveRecorderGpsButton").addEventListener("click", improveRecorderGpsStart);
       field("startRecordingButton").addEventListener("click", startRecording);
       field("pauseRecordingButton").addEventListener("click", togglePauseRecording);
       field("stopRecordingButton").addEventListener("click", stopRecording);
@@ -3331,6 +3345,7 @@
         return;
       }
 
+      stopRecorderStartWatch();
       field("recorderPanel").classList.remove("visible");
       field("surveyPanel").style.display = "";
       field("appShell").style.display = "none";
@@ -3378,8 +3393,14 @@
         return;
       }
 
+      if (recorderStartFixActive) {
+        setRecorderMessage("Wait for the GPS start fix to finish, then tap Start.", "error");
+        return;
+      }
+
       initRecorderMap();
       stopRecorderWatch();
+      stopRecorderStartWatch();
       clearRecorderMapLayers();
       recorderState = createEmptyRecorderState();
       recorderState.sessionId = makeId("REC");
@@ -3389,10 +3410,21 @@
       recorderState.routeName = field("recorderRouteName").value.trim();
       recorderState.recorderName = field("recorderName").value.trim();
       recorderState.email = field("recorderEmail").value.trim();
+      recorderState.lastAccuracy = recorderStartPoint ? recorderStartPoint.accuracyMeters : null;
+      if (recorderStartPoint) {
+        recorderState.points.push(Object.assign({}, recorderStartPoint, {
+          pointId: makeId("RPT"),
+          timestamp: new Date().toISOString(),
+          condition: recorderState.condition
+        }));
+      }
       saveRecorderContact();
       setRecorderCondition("Green");
       renderRecorderReviewList();
-      setRecorderMessage("Recording. Walk the sidewalk and tap Yellow or Red when condition changes.", "ok");
+      setRecorderMessage(recorderStartPoint
+        ? "Recording from improved GPS start. Walk the sidewalk and tap Yellow or Red when condition changes."
+        : "Recording. For better accuracy, you can stop and use Improve GPS before starting.",
+        "ok");
 
       recorderWatchId = navigator.geolocation.watchPosition(
         handleRecorderPosition,
@@ -3401,6 +3433,90 @@
       );
 
       updateRecorderUi();
+    }
+
+    function improveRecorderGpsStart() {
+      if (!navigator.geolocation) {
+        setRecorderMessage("This browser does not support GPS lookup.", "error");
+        return;
+      }
+
+      if (recorderState.status === "recording" || recorderState.status === "paused") {
+        setRecorderMessage("Improve GPS before starting a recording, or stop this recording first.", "error");
+        return;
+      }
+
+      initRecorderMap();
+      stopRecorderStartWatch();
+      recorderStartPoint = null;
+      recorderStartFixActive = true;
+      field("improveRecorderGpsButton").disabled = true;
+      setRecorderMessage("Getting a better GPS start fix. Stand near the starting point for a few seconds.", "");
+
+      let bestPosition = null;
+      const startedAt = Date.now();
+      const stopTimer = window.setTimeout(finishRecorderStartFix, 22000);
+
+      recorderStartWatchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const accuracy = Number(position.coords.accuracy);
+          const isBetter = !bestPosition || accuracy < Number(bestPosition.coords.accuracy);
+
+          if (isBetter) {
+            bestPosition = position;
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const cleanAccuracy = Number.isFinite(accuracy) ? Math.round(accuracy) : "";
+            recorderStartPoint = {
+              pointId: makeId("RPT"),
+              timestamp: new Date(position.timestamp || Date.now()).toISOString(),
+              latitude: lat,
+              longitude: lng,
+              accuracyMeters: cleanAccuracy,
+              speed: Number.isFinite(position.coords.speed) ? position.coords.speed : "",
+              heading: Number.isFinite(position.coords.heading) ? position.coords.heading : "",
+              condition: recorderState.condition || "Green"
+            };
+            recorderState.lastAccuracy = cleanAccuracy;
+            if (recorderMap) recorderMap.setView([lat, lng], cleanAccuracy && cleanAccuracy <= 20 ? 21 : 20);
+            updateRecorderUi();
+            setRecorderMessage("Best start fix so far: about " + (cleanAccuracy || "--") + " m.", "ok");
+          }
+
+          if (Number(position.coords.accuracy) <= 8 || Date.now() - startedAt > 16000) {
+            finishRecorderStartFix();
+          }
+        },
+        () => {
+          window.clearTimeout(stopTimer);
+          stopRecorderStartWatch();
+          recorderStartFixActive = false;
+          field("improveRecorderGpsButton").disabled = false;
+          setRecorderMessage("GPS start fix was not available. Check location permission and try again.", "error");
+        },
+        { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+      );
+
+      function finishRecorderStartFix() {
+        window.clearTimeout(stopTimer);
+        stopRecorderStartWatch();
+        recorderStartFixActive = false;
+        field("improveRecorderGpsButton").disabled = false;
+
+        if (recorderStartPoint) {
+          setRecorderMessage("Improved GPS start saved. Accuracy: about " + (recorderStartPoint.accuracyMeters || "--") + " m. Tap Start when ready.", "ok");
+        } else {
+          setRecorderMessage("No GPS start point was captured. Try Improve GPS again or start recording normally.", "error");
+        }
+      }
+    }
+
+    function stopRecorderStartWatch() {
+      if (recorderStartWatchId !== null) {
+        navigator.geolocation.clearWatch(recorderStartWatchId);
+        recorderStartWatchId = null;
+      }
+      recorderStartFixActive = false;
     }
 
     function togglePauseRecording() {
@@ -3598,8 +3714,9 @@
         item.className = "review-segment" + (segment.condition === "Red" ? " red" : "");
         item.innerHTML = "<div><strong>" + escapeHtml(segment.conditionLabel) + "</strong><span>" +
           escapeHtml(segment.distanceFt + " ft | accuracy " + (segment.averageAccuracyMeters || "--") + " m") +
-          "</span></div><button class=\"secondary\" type=\"button\">Zoom</button>";
-        item.querySelector("button").addEventListener("click", () => zoomToRecorderSegment(segment.segmentId));
+          "</span></div><div class=\"review-segment-actions\"><button class=\"secondary\" type=\"button\" data-review-action=\"zoom\">Zoom</button><button type=\"button\" data-review-action=\"document\">Document</button></div>";
+        item.querySelector('[data-review-action="zoom"]').addEventListener("click", () => zoomToRecorderSegment(segment.segmentId));
+        item.querySelector('[data-review-action="document"]').addEventListener("click", () => documentRecorderSegment(segment.segmentId));
         list.appendChild(item);
       });
     }
@@ -3611,6 +3728,60 @@
       }
     }
 
+    function documentRecorderSegment(segmentId) {
+      const segment = recorderState.segments.find((item) => item.segmentId === segmentId);
+      if (!segment || !segment.coordinates.length) return;
+
+      if (recorderState.status === "recording" || recorderState.status === "paused") {
+        setRecorderMessage("Stop the recording before creating a detailed report from a review segment.", "error");
+        return;
+      }
+
+      const first = segment.coordinates[0];
+      const last = segment.coordinates[segment.coordinates.length - 1];
+      const isLongSegment = segment.distanceFt >= 12 && segment.coordinates.length > 1;
+      const midpoint = getCoordinateMidpoint(segment.coordinates);
+      const severity = segment.condition === "Red" ? "3" : "2";
+      const conditionText = segment.condition === "Red" ? "Severe recorder segment" : "Yellow review recorder segment";
+
+      field("recorderPanel").classList.remove("visible");
+      field("surveyPanel").style.display = "";
+      field("appShell").style.display = "grid";
+      field("introScreen").style.display = "none";
+      field("successPanel").style.display = "none";
+      field("surveyForm").style.display = "";
+
+      resetFormAfterSubmit();
+      field("reportType").value = isLongSegment ? "Sidewalk Segment" : "Point Issue";
+      field("severity").value = severity;
+      setSelectedConditions(["Other"]);
+      field("comments").value = conditionText + " created from Recorder Mode. Route: " +
+        (recorderState.routeName || "not entered") + ". Recorder segment ID: " + segment.segmentId + ".";
+
+      if (isLongSegment) {
+        segmentStart = { lat: first[1], lng: first[0] };
+        segmentEnd = { lat: last[1], lng: last[0] };
+        currentAccuracy = segment.averageAccuracyMeters || currentAccuracy;
+        updateReportTypeUI();
+        updateSegmentPreview();
+        locationConfirmed = true;
+        updateLocationConfirmationStatus();
+      } else {
+        updateReportTypeUI();
+        setLocation(midpoint.lat, midpoint.lng, false, segment.averageAccuracyMeters || null);
+        locationConfirmed = true;
+        updateLocationConfirmationStatus();
+      }
+
+      [
+        "reportType", "condition", "severity"
+      ].forEach(syncSegmentedControl);
+      updateMeasurementVisibility();
+      updateConditionHelp();
+      openSurveyStep("conditionSection");
+      setMessage("Recorder review segment loaded into the report form. Add photos, measurements, and notes before submitting.", "ok");
+    }
+
     function updateRecorderUi() {
       const reviewCount = recorderState.segments.filter((segment) => segment.reviewNeeded === "Yes").length;
       field("recorderStatus").textContent = recorderStatusLabel(recorderState.status);
@@ -3619,10 +3790,11 @@
       field("recorderPointCount").textContent = String(recorderState.points.length);
       field("recorderSegmentCount").textContent = String(recorderState.segments.length);
       field("recorderReviewCount").textContent = String(reviewCount);
-      field("startRecordingButton").disabled = recorderState.status === "recording" || recorderState.status === "paused";
+      field("startRecordingButton").disabled = recorderStartFixActive || recorderState.status === "recording" || recorderState.status === "paused";
       field("pauseRecordingButton").disabled = !(recorderState.status === "recording" || recorderState.status === "paused");
       field("pauseRecordingButton").textContent = recorderState.status === "paused" ? "Resume" : "Pause";
       field("stopRecordingButton").disabled = !(recorderState.status === "recording" || recorderState.status === "paused");
+      field("improveRecorderGpsButton").disabled = recorderStartFixActive || recorderState.status === "recording" || recorderState.status === "paused";
     }
 
     function saveRecorderContact() {
@@ -3743,6 +3915,15 @@
         Yellow: "Yellow / Needs Review",
         Red: "Red / Poor"
       }[condition] || "Green / Good";
+    }
+
+    function getCoordinateMidpoint(coordinates) {
+      if (!coordinates || !coordinates.length) {
+        return { lat: DEFAULT_LOCATION.lat, lng: DEFAULT_LOCATION.lng };
+      }
+
+      const middle = coordinates[Math.floor(coordinates.length / 2)];
+      return { lat: middle[1], lng: middle[0] };
     }
 
     function makeId(prefix) {
