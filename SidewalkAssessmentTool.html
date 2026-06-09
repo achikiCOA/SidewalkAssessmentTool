@@ -745,6 +745,75 @@
       font-size: 1.05rem;
     }
 
+    .recorder-metric .condition-status {
+      font-size: 1.25rem;
+      font-weight: 800;
+    }
+
+    .condition-status.condition-good {
+      color: #166534;
+    }
+
+    .condition-status.condition-fair {
+      color: #854d0e;
+    }
+
+    .condition-status.condition-poor {
+      color: #991b1b;
+    }
+
+    .gps-quality {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-weight: 800;
+    }
+
+    .gps-quality.good {
+      color: #14532d;
+      background: #dcfce7;
+    }
+
+    .gps-quality.fair {
+      color: #713f12;
+      background: #fef3c7;
+    }
+
+    .gps-quality.poor {
+      color: #7f1d1d;
+      background: #fee2e2;
+    }
+
+    .recorder-detail-mode {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 12px 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .recorder-detail-mode p {
+      grid-column: 1 / -1;
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .detail-mode-button {
+      min-height: 48px;
+      border: 2px solid transparent;
+    }
+
+    .detail-mode-button.active {
+      border-color: #111827;
+      box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.14);
+    }
+
     .condition-toggle-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -753,8 +822,19 @@
     }
 
     .condition-toggle {
-      min-height: 58px;
+      min-height: 76px;
       border: 2px solid transparent;
+      font-size: 1.05rem;
+      font-weight: 800;
+      line-height: 1.2;
+      touch-action: manipulation;
+    }
+
+    .condition-toggle span {
+      display: inline-block;
+      margin-top: 3px;
+      font-size: 0.92rem;
+      font-weight: 700;
     }
 
     .condition-toggle[data-condition="Green"] {
@@ -794,6 +874,12 @@
       background: #fff;
       border-top: 1px solid var(--line);
       box-shadow: 0 -8px 20px rgba(20, 32, 52, 0.08);
+    }
+
+    .recorder-actions button {
+      min-height: 54px;
+      font-size: 1rem;
+      touch-action: manipulation;
     }
 
     .recorder-actions .condition-toggle-grid {
@@ -934,9 +1020,24 @@
       .button-row,
       .score-grid,
       .review-filter-grid,
-      .review-segment-actions,
-      .recorder-actions {
+      .review-segment-actions {
         grid-template-columns: 1fr;
+      }
+
+      .recorder-body {
+        padding-bottom: 220px;
+      }
+
+      .recorder-actions {
+        gap: 10px;
+      }
+
+      .recorder-control-grid {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+
+      .recorder-actions button {
+        min-height: 58px;
       }
 
       header {
@@ -1537,11 +1638,11 @@
           </div>
           <div class="recorder-metric">
             <span>Current Condition</span>
-            <strong id="recorderCurrentCondition">Green / Good</strong>
+            <strong id="recorderCurrentCondition" class="condition-status condition-good">Green / Good</strong>
           </div>
           <div class="recorder-metric">
             <span>GPS Accuracy</span>
-            <strong id="recorderAccuracy">--</strong>
+            <strong id="recorderAccuracy" class="gps-quality">--</strong>
           </div>
           <div class="recorder-metric">
             <span>Distance</span>
@@ -1563,6 +1664,12 @@
             <span>Saved Sessions</span>
             <strong id="recorderSavedCount">0</strong>
           </div>
+        </div>
+
+        <div class="recorder-detail-mode" aria-label="Recorder battery and detail mode">
+          <p><strong>Recording Detail</strong> Normal saves battery and reduces GPS jitter. High Detail captures tighter sidewalk changes.</p>
+          <button class="secondary detail-mode-button active" type="button" data-recorder-detail-mode="normal" aria-pressed="true">Normal<br><span>&gt; 2 m</span></button>
+          <button class="secondary detail-mode-button" type="button" data-recorder-detail-mode="high" aria-pressed="false">High Detail<br><span>&gt; 1 m</span></button>
         </div>
 
         <div id="recorderMap" aria-label="Continuous GPS recorder map"></div>
@@ -1613,7 +1720,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "";
-    const APP_VERSION = "2026-06-09-debugging-v1";
+    const APP_VERSION = "2026-06-09-field-mobile-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
     const RECORDER_ACTIVE_STORAGE_KEY = "sidewalkRecorderActiveSession";
@@ -1683,7 +1790,8 @@
     const DEBUG = false;
     const RECORDER_DEBUG = DEBUG;
     const RECORDER_MAX_ACCURACY_METERS = 15;
-    const RECORDER_MIN_DISTANCE_METERS = 1;
+    const RECORDER_NORMAL_DISTANCE_METERS = 2;
+    const RECORDER_HIGH_DETAIL_DISTANCE_METERS = 1;
     const RECORDER_SEGMENT_GAP_METERS = 30;
     const RECORDER_SEGMENT_GAP_MS = 60000;
     const RECORDER_SOURCE = "continuous_recorder";
@@ -1721,6 +1829,7 @@
     let recorderState = createEmptyRecorderState();
     let recorderLayers = [];
     let recorderReviewFilter = "problem";
+    let recorderDetailMode = "normal";
 
     const field = (id) => document.getElementById(id);
 
@@ -2591,6 +2700,9 @@
       field("clearRecorderSessionsButton").addEventListener("click", clearRecorderSessions);
       document.querySelectorAll("[data-review-filter]").forEach((button) => {
         button.addEventListener("click", () => setRecorderReviewFilter(button.dataset.reviewFilter));
+      });
+      document.querySelectorAll("[data-recorder-detail-mode]").forEach((button) => {
+        button.addEventListener("click", () => setRecorderDetailMode(button.dataset.recorderDetailMode));
       });
       document.querySelectorAll(".condition-toggle").forEach((button) => {
         button.addEventListener("click", () => setRecorderCondition(button.dataset.condition));
@@ -3747,6 +3859,7 @@
     }
 
     function handleStartPauseRecording() {
+      triggerHapticFeedback(18);
       if (recorderState.status === "recording" || recorderState.status === "paused") {
         togglePauseRecording();
         return;
@@ -3771,6 +3884,12 @@
     function stopRecorder() {
       if (recorderState.status === "idle") return;
 
+      if (recorderState.points.length < 2) {
+        const shouldStop = window.confirm("Are you sure you want to stop? This recording has fewer than 2 accepted GPS points, so it cannot create a sidewalk line segment yet.");
+        if (!shouldStop) return;
+      }
+
+      triggerHapticFeedback([20, 40, 20]);
       stopRecorderWatch();
 
       if (recorderState.points.length < 2) {
@@ -3861,13 +3980,24 @@
       const previous = recorderState.points[recorderState.points.length - 1];
       if (previous) {
         const distanceMeters = calculateDistanceMeters(previous, point);
-        if (distanceMeters < RECORDER_MIN_DISTANCE_METERS) {
-          debugRecorder("GPS point rejected for distance", { distanceMeters: distanceMeters });
+        const minimumDistanceMeters = getRecorderMinimumDistanceMeters();
+        if (distanceMeters <= minimumDistanceMeters) {
+          debugRecorder("GPS point rejected for distance", {
+            distanceMeters: distanceMeters,
+            minimumDistanceMeters: minimumDistanceMeters,
+            detailMode: recorderDetailMode
+          });
           return false;
         }
       }
 
       return true;
+    }
+
+    function getRecorderMinimumDistanceMeters() {
+      return recorderDetailMode === "high"
+        ? RECORDER_HIGH_DETAIL_DISTANCE_METERS
+        : RECORDER_NORMAL_DISTANCE_METERS;
     }
 
     function calculateDistanceMeters(a, b) {
@@ -3931,6 +4061,29 @@
       };
     }
 
+    function triggerHapticFeedback(pattern = 20) {
+      if (!navigator.vibrate) return;
+      try {
+        navigator.vibrate(pattern);
+      } catch (error) {
+        debugRecorder("Haptic feedback unavailable", error);
+      }
+    }
+
+    function setRecorderDetailMode(mode) {
+      recorderDetailMode = mode === "high" ? "high" : "normal";
+      document.querySelectorAll("[data-recorder-detail-mode]").forEach((button) => {
+        const active = button.dataset.recorderDetailMode === recorderDetailMode;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      triggerHapticFeedback(12);
+      setRecorderMessage(recorderDetailMode === "high"
+        ? "High Detail mode enabled. Recorder accepts movement over 1 m and may use more battery."
+        : "Normal mode enabled. Recorder accepts movement over 2 m to save battery and reduce GPS jitter.",
+        "");
+    }
+
     function setRecorderCondition(condition) {
       recorderState.condition = condition || "Green";
       document.querySelectorAll(".condition-toggle").forEach((button) => {
@@ -3938,6 +4091,7 @@
         button.classList.toggle("active", active);
         button.setAttribute("aria-pressed", active ? "true" : "false");
       });
+      triggerHapticFeedback(18);
       if (recorderState.status === "recording") {
         setRecorderMessage("Condition set to " + recorderConditionLabel(recorderState.condition) + ". New GPS points will use this color.", "ok");
       }
@@ -4342,9 +4496,13 @@
 
     function updateRecorderUi() {
       const reviewCount = recorderState.segments.filter((segment) => segment.reviewNeeded === "Yes" && !segment.reviewed).length;
+      const conditionEl = field("recorderCurrentCondition");
+      const accuracyEl = field("recorderAccuracy");
       field("recorderStatus").textContent = recorderStatusLabel(recorderState.status);
-      field("recorderCurrentCondition").textContent = recorderConditionLabel(recorderState.condition);
-      field("recorderAccuracy").textContent = recorderState.lastAccuracy ? recorderState.lastAccuracy + " m" : "--";
+      conditionEl.textContent = recorderConditionLabel(recorderState.condition);
+      conditionEl.className = "condition-status " + recorderConditionStatusClass(recorderState.condition);
+      accuracyEl.textContent = recorderState.lastAccuracy ? recorderState.lastAccuracy + " m" : "--";
+      accuracyEl.className = "gps-quality " + recorderGpsQualityClass(recorderState.lastAccuracy);
       field("recorderDistance").textContent = recorderState.distanceFt + " ft";
       field("recorderPointCount").textContent = String(recorderState.points.length);
       field("recorderSegmentCount").textContent = String(recorderState.segments.length);
@@ -4358,6 +4516,20 @@
           : "Start";
       field("stopRecordingButton").disabled = !(recorderState.status === "recording" || recorderState.status === "paused");
       field("improveRecorderGpsButton").disabled = recorderStartFixActive || recorderState.status === "recording" || recorderState.status === "paused";
+    }
+
+    function recorderConditionStatusClass(condition) {
+      if (condition === "Yellow") return "condition-fair";
+      if (condition === "Red") return "condition-poor";
+      return "condition-good";
+    }
+
+    function recorderGpsQualityClass(accuracyMeters) {
+      const accuracy = Number(accuracyMeters);
+      if (!Number.isFinite(accuracy)) return "";
+      if (accuracy <= 5) return "good";
+      if (accuracy <= 15) return "fair";
+      return "poor";
     }
 
     function warnBeforeLeavingActiveRecorder(event) {
