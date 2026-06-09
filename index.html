@@ -1491,6 +1491,10 @@
             <strong id="recorderStatus">Ready</strong>
           </div>
           <div class="recorder-metric">
+            <span>Current Condition</span>
+            <strong id="recorderCurrentCondition">Green / Good</strong>
+          </div>
+          <div class="recorder-metric">
             <span>GPS Accuracy</span>
             <strong id="recorderAccuracy">--</strong>
           </div>
@@ -1531,14 +1535,20 @@
 
         <div class="recorder-actions">
           <div class="condition-toggle-grid" aria-label="Current sidewalk condition">
-            <button class="condition-toggle active" type="button" data-condition="Green">Green<br><span>Good</span></button>
-            <button class="condition-toggle" type="button" data-condition="Yellow">Yellow<br><span>Review</span></button>
-            <button class="condition-toggle" type="button" data-condition="Red">Red<br><span>Poor</span></button>
+            <button class="condition-toggle active" type="button" data-condition="Green" aria-pressed="true">Green<br><span>Good</span></button>
+            <button class="condition-toggle" type="button" data-condition="Yellow" aria-pressed="false">Yellow<br><span>Fair</span></button>
+            <button class="condition-toggle" type="button" data-condition="Red" aria-pressed="false">Red<br><span>Poor</span></button>
           </div>
           <div class="recorder-control-grid">
             <button class="secondary" type="button" id="improveRecorderGpsButton">Improve GPS</button>
             <button type="button" id="startRecordingButton">Start</button>
             <button class="secondary" type="button" id="stopRecordingButton" disabled>Stop</button>
+          </div>
+          <div class="recorder-control-grid">
+            <button class="secondary" type="button" id="addRecorderNoteButton">Add Note</button>
+            <button class="secondary" type="button" id="captureRecorderPhotoButton">Capture Photo</button>
+            <input class="field-hidden" type="file" id="recorderPhoto" accept="image/*" capture="environment" multiple>
+            <button class="secondary" type="button" id="downloadRecorderGeoJsonTrayButton">Export GeoJSON</button>
           </div>
         </div>
       </div>
@@ -1548,7 +1558,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-09-recorder-mode-v1";
+    const APP_VERSION = "2026-06-09-recorder-scaffold-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
@@ -2486,7 +2496,11 @@
       field("improveRecorderGpsButton").addEventListener("click", improveRecorderGpsStart);
       field("startRecordingButton").addEventListener("click", handleStartPauseRecording);
       field("stopRecordingButton").addEventListener("click", stopRecording);
+      field("addRecorderNoteButton").addEventListener("click", addRecorderNote);
+      field("captureRecorderPhotoButton").addEventListener("click", () => field("recorderPhoto").click());
+      field("recorderPhoto").addEventListener("change", captureRecorderPhotos);
       field("downloadRecorderGeoJsonButton").addEventListener("click", downloadRecorderGeoJson);
+      field("downloadRecorderGeoJsonTrayButton").addEventListener("click", downloadRecorderGeoJson);
       field("clearRecorderSessionsButton").addEventListener("click", clearRecorderSessions);
       document.querySelectorAll(".condition-toggle").forEach((button) => {
         button.addEventListener("click", () => setRecorderCondition(button.dataset.condition));
@@ -3325,6 +3339,8 @@
         email: "",
         points: [],
         segments: [],
+        notes: [],
+        photos: [],
         distanceFt: 0,
         lastAccuracy: null
       };
@@ -3628,11 +3644,58 @@
     function setRecorderCondition(condition) {
       recorderState.condition = condition || "Green";
       document.querySelectorAll(".condition-toggle").forEach((button) => {
-        button.classList.toggle("active", button.dataset.condition === recorderState.condition);
+        const active = button.dataset.condition === recorderState.condition;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
       });
       if (recorderState.status === "recording") {
-        setRecorderMessage("Condition set to " + recorderState.condition + ". New GPS points will use this color.", "ok");
+        setRecorderMessage("Condition set to " + recorderConditionLabel(recorderState.condition) + ". New GPS points will use this color.", "ok");
       }
+      updateRecorderUi();
+    }
+
+    function addRecorderNote() {
+      const note = prompt("Recorder note", "");
+      if (note === null) return;
+
+      const text = note.trim();
+      if (!text) {
+        setRecorderMessage("Note was empty, so nothing was added.", "");
+        return;
+      }
+
+      const lastPoint = recorderState.points[recorderState.points.length - 1] || recorderStartPoint || null;
+      recorderState.notes.push({
+        noteId: makeId("RNT"),
+        timestamp: new Date().toISOString(),
+        condition: recorderState.condition,
+        text: text,
+        latitude: lastPoint ? lastPoint.latitude : "",
+        longitude: lastPoint ? lastPoint.longitude : ""
+      });
+      setRecorderMessage("Recorder note added.", "ok");
+      updateRecorderUi();
+    }
+
+    function captureRecorderPhotos() {
+      const files = Array.from(field("recorderPhoto").files || []);
+      if (!files.length) return;
+
+      const lastPoint = recorderState.points[recorderState.points.length - 1] || recorderStartPoint || null;
+      files.forEach((file) => {
+        recorderState.photos.push({
+          photoId: makeId("RPH"),
+          timestamp: new Date().toISOString(),
+          condition: recorderState.condition,
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          latitude: lastPoint ? lastPoint.latitude : "",
+          longitude: lastPoint ? lastPoint.longitude : ""
+        });
+      });
+      field("recorderPhoto").value = "";
+      setRecorderMessage(files.length + " recorder photo" + (files.length === 1 ? "" : "s") + " attached locally.", "ok");
       updateRecorderUi();
     }
 
@@ -3801,6 +3864,7 @@
     function updateRecorderUi() {
       const reviewCount = recorderState.segments.filter((segment) => segment.reviewNeeded === "Yes").length;
       field("recorderStatus").textContent = recorderStatusLabel(recorderState.status);
+      field("recorderCurrentCondition").textContent = recorderConditionLabel(recorderState.condition);
       field("recorderAccuracy").textContent = recorderState.lastAccuracy ? recorderState.lastAccuracy + " m" : "--";
       field("recorderDistance").textContent = recorderState.distanceFt + " ft";
       field("recorderPointCount").textContent = String(recorderState.points.length);
@@ -3881,7 +3945,11 @@
               averageAccuracyMeters: segment.averageAccuracyMeters,
               reviewNeeded: segment.reviewNeeded,
               reviewStatus: segment.reviewStatus,
-              notes: segment.notes || ""
+              notes: segment.notes || "",
+              recorderNoteCount: (session.notes || []).length,
+              recorderPhotoCount: (session.photos || []).length,
+              recorderNotes: (session.notes || []).map((note) => note.text).join("; "),
+              recorderPhotoNames: (session.photos || []).map((photo) => photo.name).join("; ")
             }
           });
         });
@@ -3931,7 +3999,7 @@
     function recorderConditionLabel(condition) {
       return {
         Green: "Green / Good",
-        Yellow: "Yellow / Needs Review",
+        Yellow: "Yellow / Fair",
         Red: "Red / Poor"
       }[condition] || "Green / Good";
     }
