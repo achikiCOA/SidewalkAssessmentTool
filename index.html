@@ -1558,7 +1558,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-09-recorder-engine-v1";
+    const APP_VERSION = "2026-06-09-recorder-segments-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
     const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
@@ -1626,6 +1626,9 @@
     const RECORDER_DEBUG = false;
     const RECORDER_MAX_ACCURACY_METERS = 15;
     const RECORDER_MIN_DISTANCE_METERS = 1;
+    const RECORDER_SEGMENT_GAP_METERS = 30;
+    const RECORDER_SEGMENT_GAP_MS = 60000;
+    const RECORDER_SOURCE = "continuous_recorder";
 
     let map = null;
     let marker = null;
@@ -1668,6 +1671,7 @@
       updateSavedCount();
       updateUploadStatus();
       runScoring();
+      runRecorderSegmentSelfTest();
 
       if (!window.L) {
         setMessage("Map library did not load. Check your internet connection and reload this file.", "error");
@@ -3587,11 +3591,11 @@
 
       recorderState.status = "stopped";
       recorderState.endedAt = new Date().toISOString();
-      recorderState.segments = buildRecorderSegments(recorderState.points);
+      recorderState.segments = rebuildSegmentsFromPoints(recorderState.points);
       recorderState.distanceFt = Math.round(recorderState.segments.reduce((total, segment) => total + segment.distanceFt, 0));
 
       saveRecorderSession(recorderState);
-      renderRecorderPaths();
+      renderSegments();
       renderRecorderReviewList();
       updateRecorderUi();
       setRecorderMessage("Recording saved locally. Export GeoJSON when you are ready to review it in GIS.", "ok");
@@ -3636,9 +3640,9 @@
       }
 
       recorderState.points.push(point);
-      recorderState.segments = buildRecorderSegments(recorderState.points);
+      recorderState.segments = rebuildSegmentsFromPoints(recorderState.points);
       recorderState.distanceFt = Math.round(recorderState.segments.reduce((total, segment) => total + segment.distanceFt, 0));
-      renderRecorderPaths();
+      renderSegments();
       updateRecorderUi();
 
       if (recorderMap && recorderState.points.length === 1) {
@@ -3699,6 +3703,37 @@
       }
     }
 
+    function runRecorderSegmentSelfTest() {
+      if (!RECORDER_DEBUG) return;
+      const start = Date.parse("2026-01-01T00:00:00.000Z");
+      const points = [
+        makeRecorderTestPoint(39.3292, -82.1013, "Green", start),
+        makeRecorderTestPoint(39.32921, -82.10131, "Green", start + 1000),
+        makeRecorderTestPoint(39.32922, -82.10132, "Yellow", start + 2000),
+        makeRecorderTestPoint(39.32923, -82.10133, "Yellow", start + RECORDER_SEGMENT_GAP_MS + 3000),
+        makeRecorderTestPoint(39.3298, -82.1019, "Yellow", start + RECORDER_SEGMENT_GAP_MS + 4000)
+      ];
+      const segments = rebuildSegmentsFromPoints(points);
+      debugRecorder("Recorder segment self-test", {
+        expected: 2,
+        actual: segments.length,
+        segments: segments
+      });
+    }
+
+    function makeRecorderTestPoint(lat, lng, condition, timestampMs) {
+      return {
+        pointId: makeId("TPT"),
+        timestamp: new Date(timestampMs).toISOString(),
+        latitude: lat,
+        longitude: lng,
+        accuracyMeters: 5,
+        speed: "",
+        heading: "",
+        condition: condition
+      };
+    }
+
     function setRecorderCondition(condition) {
       recorderState.condition = condition || "Green";
       document.querySelectorAll(".condition-toggle").forEach((button) => {
@@ -3757,7 +3792,7 @@
       updateRecorderUi();
     }
 
-    function buildRecorderSegments(points) {
+    function rebuildSegmentsFromPoints(points, routeId = recorderState.sessionId || "") {
       if (!points || points.length < 2) return [];
 
       const segments = [];
@@ -3767,26 +3802,31 @@
         const previous = points[i - 1];
         const current = points[i];
         const condition = current.condition || "Green";
-        const legDistance = calculateSegmentLengthFt(
-          { lat: previous.latitude, lng: previous.longitude },
-          { lat: current.latitude, lng: current.longitude }
-        );
+        const legDistanceMeters = calculateDistanceMeters(previous, current);
+        const shouldSplit = shouldStartNewRecorderSegment(previous, current, active);
+        const hasGpsGap = isRecorderGapBreak(previous, current);
 
-        if (!active || active.condition !== condition) {
+        if (hasGpsGap) {
+          if (active) {
+            segments.push(finalizeRecorderSegment(active));
+            active = null;
+          }
+          debugRecorder("Recorder segment split for GPS gap", {
+            distanceMeters: legDistanceMeters,
+            timeGapMs: calculateTimeGapMs(previous, current)
+          });
+          continue;
+        }
+
+        if (!active || shouldSplit) {
           if (active) segments.push(finalizeRecorderSegment(active));
-          active = {
-            segmentId: makeId("RSG"),
-            condition: condition,
-            coordinates: [[previous.longitude, previous.latitude], [current.longitude, current.latitude]],
-            startTimestamp: previous.timestamp,
-            endTimestamp: current.timestamp,
-            distanceFt: legDistance,
-            accuracies: [previous.accuracyMeters, current.accuracyMeters].filter((value) => value !== "")
-          };
+          active = createRecorderSegmentDraft(previous, current, legDistanceMeters, condition, routeId);
         } else {
           active.coordinates.push([current.longitude, current.latitude]);
+          active.endTime = current.timestamp;
           active.endTimestamp = current.timestamp;
-          active.distanceFt += legDistance;
+          active.lengthMeters += legDistanceMeters;
+          active.pointCount += 1;
           if (current.accuracyMeters !== "") active.accuracies.push(current.accuracyMeters);
         }
       }
@@ -3795,26 +3835,79 @@
       return segments;
     }
 
+    function buildRecorderSegments(points) {
+      return rebuildSegmentsFromPoints(points);
+    }
+
+    function shouldStartNewRecorderSegment(previousPoint, currentPoint, activeSegment) {
+      if (!activeSegment) return true;
+      const currentCondition = currentPoint.condition || "Green";
+
+      return activeSegment.condition !== currentCondition ||
+        isRecorderGapBreak(previousPoint, currentPoint);
+    }
+
+    function isRecorderGapBreak(previousPoint, currentPoint) {
+      return calculateDistanceMeters(previousPoint, currentPoint) > RECORDER_SEGMENT_GAP_METERS ||
+        calculateTimeGapMs(previousPoint, currentPoint) > RECORDER_SEGMENT_GAP_MS;
+    }
+
+    function calculateTimeGapMs(a, b) {
+      const aTime = new Date(a.timestamp).getTime();
+      const bTime = new Date(b.timestamp).getTime();
+      if (!Number.isFinite(aTime) || !Number.isFinite(bTime)) return 0;
+      return Math.abs(bTime - aTime);
+    }
+
+    function createRecorderSegmentDraft(previous, current, legDistanceMeters, condition, routeId) {
+      return {
+        segmentId: makeId("RSG"),
+        routeId: routeId || "",
+        condition: condition,
+        startTime: previous.timestamp,
+        endTime: current.timestamp,
+        startTimestamp: previous.timestamp,
+        endTimestamp: current.timestamp,
+        coordinates: [[previous.longitude, previous.latitude], [current.longitude, current.latitude]],
+        pointCount: 2,
+        lengthMeters: legDistanceMeters,
+        accuracies: [previous.accuracyMeters, current.accuracyMeters].filter((value) => value !== ""),
+        source: RECORDER_SOURCE
+      };
+    }
+
     function finalizeRecorderSegment(segment) {
       const avgAccuracy = segment.accuracies.length
         ? Math.round(segment.accuracies.reduce((total, value) => total + Number(value), 0) / segment.accuracies.length)
         : "";
+      const lengthMeters = Math.round(segment.lengthMeters * 10) / 10;
+      const distanceFt = Math.round(lengthMeters * 3.28084);
+
       return {
         segmentId: segment.segmentId,
+        routeId: segment.routeId,
         condition: segment.condition,
+        conditionClass: recorderConditionClass(segment.condition),
         conditionLabel: recorderConditionLabel(segment.condition),
+        score: recorderConditionScore(segment.condition),
+        startTime: segment.startTime,
+        endTime: segment.endTime,
         startTimestamp: segment.startTimestamp,
         endTimestamp: segment.endTimestamp,
         coordinates: segment.coordinates,
-        distanceFt: Math.round(segment.distanceFt),
+        pointCount: segment.pointCount,
+        lengthMeters: lengthMeters,
+        distanceFt: distanceFt,
+        averageAccuracy: avgAccuracy,
         averageAccuracyMeters: avgAccuracy,
+        source: segment.source || RECORDER_SOURCE,
         reviewNeeded: segment.condition === "Yellow" || segment.condition === "Red" ? "Yes" : "No",
         reviewStatus: segment.condition === "Yellow" || segment.condition === "Red" ? "Needs Review" : "No Review Needed",
         notes: ""
       };
     }
 
-    function renderRecorderPaths() {
+    function renderSegments() {
       if (!recorderMap) return;
       clearRecorderMapLayers();
 
@@ -3828,6 +3921,10 @@
         layer.bindTooltip(segment.conditionLabel + " - " + segment.distanceFt + " ft");
         recorderLayers.push({ segmentId: segment.segmentId, layer: layer });
       });
+    }
+
+    function renderRecorderPaths() {
+      renderSegments();
     }
 
     function clearRecorderMapLayers() {
@@ -3992,15 +4089,24 @@
             properties: {
               sessionId: session.sessionId,
               segmentId: segment.segmentId,
+              routeId: segment.routeId || session.sessionId,
               routeName: session.routeName || "",
               recorderName: session.recorderName || "",
               email: session.email || "",
               startedAt: session.startedAt,
               endedAt: session.endedAt,
               condition: segment.condition,
+              conditionClass: segment.conditionClass,
               conditionLabel: segment.conditionLabel,
+              score: segment.score,
+              startTime: segment.startTime,
+              endTime: segment.endTime,
+              pointCount: segment.pointCount,
+              lengthMeters: segment.lengthMeters,
               distanceFt: segment.distanceFt,
+              averageAccuracy: segment.averageAccuracy,
               averageAccuracyMeters: segment.averageAccuracyMeters,
+              source: segment.source || RECORDER_SOURCE,
               reviewNeeded: segment.reviewNeeded,
               reviewStatus: segment.reviewStatus,
               notes: segment.notes || "",
@@ -4052,6 +4158,22 @@
         Yellow: "#facc15",
         Red: "#b42318"
       }[condition] || "#16803c";
+    }
+
+    function recorderConditionClass(condition) {
+      return {
+        Green: "Good",
+        Yellow: "Fair",
+        Red: "Poor"
+      }[condition] || "Good";
+    }
+
+    function recorderConditionScore(condition) {
+      return {
+        Green: 100,
+        Yellow: 70,
+        Red: 35
+      }[condition] || 100;
     }
 
     function recorderConditionLabel(condition) {
