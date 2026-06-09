@@ -826,8 +826,47 @@
 
     .review-segment-actions {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, 1fr);
       gap: 8px;
+    }
+
+    .review-filter-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .review-filter-button.active {
+      color: #fff;
+      background: var(--accent);
+    }
+
+    .review-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 8px;
+    }
+
+    .review-detail {
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+
+    .review-detail span {
+      color: var(--muted);
+      font-size: 0.76rem;
+    }
+
+    .review-detail strong {
+      margin-top: 3px;
+      font-size: 0.9rem;
+    }
+
+    .review-segment.reviewed {
+      opacity: 0.72;
     }
 
     .review-segment.red {
@@ -894,6 +933,8 @@
       .form-grid,
       .button-row,
       .score-grid,
+      .review-filter-grid,
+      .review-segment-actions,
       .recorder-actions {
         grid-template-columns: 1fr;
       }
@@ -1523,8 +1564,13 @@
         <div id="recorderMap" aria-label="Continuous GPS recorder map"></div>
 
         <details class="reference-panel">
-          <summary>Review Yellow and Red Segments</summary>
-          <p>Yellow and Red line segments are saved for later review. Tap a segment below to zoom to it on the map.</p>
+          <summary>Review Mode</summary>
+          <p>Review recorded sidewalk segments, zoom to problem areas, mark items reviewed, or create a detailed inspection from the segment midpoint.</p>
+          <div class="review-filter-grid" aria-label="Review segment filters">
+            <button class="secondary review-filter-button" type="button" data-review-filter="all">Show All</button>
+            <button class="secondary review-filter-button active" type="button" data-review-filter="problem">Show Yellow/Red Only</button>
+            <button class="secondary review-filter-button" type="button" data-review-filter="unreviewed">Show Unreviewed Only</button>
+          </div>
           <div class="review-segment-list" id="recorderReviewList"></div>
         </details>
 
@@ -1562,7 +1608,7 @@
   <script>
     const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
     const DEFAULT_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwu45qkQi3hIlo8GySxIlUUPuIHByzqmf3ZXackflFssOkpucXXI3UDPECAHzSztjroGQ/exec";
-    const APP_VERSION = "2026-06-09-recorder-geojson-export-v1";
+    const APP_VERSION = "2026-06-09-recorder-review-workflow-v1";
     const STORAGE_KEY = "sidewalkAssessmentReports";
     const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
     const RECORDER_ACTIVE_STORAGE_KEY = "sidewalkRecorderActiveSession";
@@ -1663,6 +1709,7 @@
     let recorderStartFixActive = false;
     let recorderState = createEmptyRecorderState();
     let recorderLayers = [];
+    let recorderReviewFilter = "problem";
 
     const field = (id) => document.getElementById(id);
 
@@ -2516,6 +2563,9 @@
       field("exportAllRecorderGeoJsonButton").addEventListener("click", exportAllRecorderGeoJson);
       field("exportCurrentRecorderGeoJsonButton").addEventListener("click", exportCurrentRecorderGeoJson);
       field("clearRecorderSessionsButton").addEventListener("click", clearRecorderSessions);
+      document.querySelectorAll("[data-review-filter]").forEach((button) => {
+        button.addEventListener("click", () => setRecorderReviewFilter(button.dataset.reviewFilter));
+      });
       document.querySelectorAll(".condition-toggle").forEach((button) => {
         button.addEventListener("click", () => setRecorderCondition(button.dataset.condition));
       });
@@ -3920,6 +3970,7 @@
         source: segment.source || RECORDER_SOURCE,
         reviewNeeded: segment.condition === "Yellow" || segment.condition === "Red" ? "Yes" : "No",
         reviewStatus: segment.condition === "Yellow" || segment.condition === "Red" ? "Needs Review" : "No Review Needed",
+        reviewed: Boolean(segment.reviewed),
         notes: ""
       };
     }
@@ -3953,23 +4004,59 @@
       const list = field("recorderReviewList");
       if (!list) return;
 
-      const reviewSegments = recorderState.segments.filter((segment) => segment.reviewNeeded === "Yes");
+      const reviewSegments = getFilteredReviewSegments();
       if (!reviewSegments.length) {
-        list.innerHTML = "<p class=\"help\">No Yellow or Red segments in the current recording.</p>";
+        list.innerHTML = "<p class=\"help\">No segments match the current review filter.</p>";
         return;
       }
 
       list.innerHTML = "";
       reviewSegments.forEach((segment) => {
         const item = document.createElement("div");
-        item.className = "review-segment" + (segment.condition === "Red" ? " red" : "");
-        item.innerHTML = "<div><strong>" + escapeHtml(segment.conditionLabel) + "</strong><span>" +
-          escapeHtml(segment.distanceFt + " ft | accuracy " + (segment.averageAccuracyMeters || "--") + " m") +
-          "</span></div><div class=\"review-segment-actions\"><button class=\"secondary\" type=\"button\" data-review-action=\"zoom\">Zoom</button><button type=\"button\" data-review-action=\"document\">Document</button></div>";
+        item.className = "review-segment" + (segment.condition === "Red" ? " red" : "") + (segment.reviewed ? " reviewed" : "");
+        item.innerHTML = "<div><strong>" + escapeHtml(segment.conditionLabel) + (segment.reviewed ? " - Reviewed" : "") + "</strong></div>" +
+          "<div class=\"review-detail-grid\">" +
+          reviewDetailHtml("Condition", segment.conditionClass || recorderConditionClass(segment.condition)) +
+          reviewDetailHtml("Length", (segment.lengthMeters || 0) + " m / " + (segment.distanceFt || 0) + " ft") +
+          reviewDetailHtml("Score", segment.score || recorderConditionScore(segment.condition)) +
+          reviewDetailHtml("GPS Accuracy", (segment.averageAccuracy || segment.averageAccuracyMeters || "--") + " m") +
+          reviewDetailHtml("Start", formatRecorderDateTime(segment.startTime || segment.startTimestamp)) +
+          reviewDetailHtml("End", formatRecorderDateTime(segment.endTime || segment.endTimestamp)) +
+          reviewDetailHtml("Notes", segment.notes || "--") +
+          "</div>" +
+          "<div class=\"review-segment-actions\"><button class=\"secondary\" type=\"button\" data-review-action=\"zoom\">Zoom To</button><button class=\"secondary\" type=\"button\" data-review-action=\"review\">Mark Reviewed</button><button type=\"button\" data-review-action=\"document\">Create Detailed Inspection</button></div>";
         item.querySelector('[data-review-action="zoom"]').addEventListener("click", () => zoomToRecorderSegment(segment.segmentId));
+        item.querySelector('[data-review-action="review"]').addEventListener("click", () => markRecorderSegmentReviewed(segment.segmentId));
         item.querySelector('[data-review-action="document"]').addEventListener("click", () => documentRecorderSegment(segment.segmentId));
         list.appendChild(item);
       });
+    }
+
+    function getFilteredReviewSegments() {
+      return recorderState.segments.filter((segment) => {
+        if (recorderReviewFilter === "problem") return segment.condition === "Yellow" || segment.condition === "Red";
+        if (recorderReviewFilter === "unreviewed") return !segment.reviewed;
+        return true;
+      });
+    }
+
+    function setRecorderReviewFilter(filter) {
+      recorderReviewFilter = filter || "all";
+      document.querySelectorAll("[data-review-filter]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.reviewFilter === recorderReviewFilter);
+      });
+      renderRecorderReviewList();
+    }
+
+    function reviewDetailHtml(label, value) {
+      return "<div class=\"review-detail\"><span>" + escapeHtml(label) + "</span><strong>" + escapeHtml(value) + "</strong></div>";
+    }
+
+    function formatRecorderDateTime(value) {
+      if (!value) return "--";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return date.toLocaleString();
     }
 
     function zoomToRecorderSegment(segmentId) {
@@ -3977,6 +4064,37 @@
       if (item && recorderMap) {
         recorderMap.fitBounds(item.layer.getBounds(), { padding: [24, 24], maxZoom: 21 });
       }
+    }
+
+    function markRecorderSegmentReviewed(segmentId) {
+      const segment = recorderState.segments.find((item) => item.segmentId === segmentId);
+      if (!segment) return;
+
+      segment.reviewed = true;
+      segment.reviewStatus = "Reviewed";
+      persistRecorderSegmentReview(segmentId);
+      renderRecorderReviewList();
+      setRecorderMessage("Segment marked reviewed.", "ok");
+    }
+
+    function persistRecorderSegmentReview(segmentId) {
+      const routeId = recorderState.sessionId;
+      if (!routeId) return;
+
+      const saved = getRecorderSessions().find((session) => session.routeId === routeId || session.sessionId === routeId);
+      if (!saved) {
+        saveActiveRecorderState();
+        return;
+      }
+
+      const generatedSegments = (saved.generatedSegments || saved.segments || []).map((segment) => {
+        if (segment.segmentId !== segmentId) return segment;
+        return Object.assign({}, segment, {
+          reviewed: true,
+          reviewStatus: "Reviewed"
+        });
+      });
+      updateRecorderSession(saved.routeId, { generatedSegments: generatedSegments, segments: generatedSegments });
     }
 
     function documentRecorderSegment(segmentId) {
@@ -3988,12 +4106,9 @@
         return;
       }
 
-      const first = segment.coordinates[0];
-      const last = segment.coordinates[segment.coordinates.length - 1];
-      const isLongSegment = segment.distanceFt >= 12 && segment.coordinates.length > 1;
       const midpoint = getCoordinateMidpoint(segment.coordinates);
       const severity = segment.condition === "Red" ? "3" : "2";
-      const conditionText = segment.condition === "Red" ? "Severe recorder segment" : "Yellow review recorder segment";
+      const conditionText = segment.condition === "Red" ? "Red / Poor recorder segment" : "Yellow / Fair recorder segment";
 
       field("recorderPanel").classList.remove("visible");
       field("surveyPanel").style.display = "";
@@ -4003,26 +4118,19 @@
       field("surveyForm").style.display = "";
 
       resetFormAfterSubmit();
-      field("reportType").value = isLongSegment ? "Sidewalk Segment" : "Point Issue";
+      field("reportType").value = "Point Issue";
       field("severity").value = severity;
       setSelectedConditions(["Other"]);
       field("comments").value = conditionText + " created from Recorder Mode. Route: " +
-        (recorderState.routeName || "not entered") + ". Recorder segment ID: " + segment.segmentId + ".";
+        (recorderState.routeName || "not entered") + ". Recorder segment ID: " + segment.segmentId +
+        ". Segment length: " + (segment.lengthMeters || "--") + " m. Segment score: " + (segment.score || "--") +
+        ". Start: " + (segment.startTime || segment.startTimestamp || "--") +
+        ". End: " + (segment.endTime || segment.endTimestamp || "--") + ".";
 
-      if (isLongSegment) {
-        segmentStart = { lat: first[1], lng: first[0] };
-        segmentEnd = { lat: last[1], lng: last[0] };
-        currentAccuracy = segment.averageAccuracyMeters || currentAccuracy;
-        updateReportTypeUI();
-        updateSegmentPreview();
-        locationConfirmed = true;
-        updateLocationConfirmationStatus();
-      } else {
-        updateReportTypeUI();
-        setLocation(midpoint.lat, midpoint.lng, false, segment.averageAccuracyMeters || null);
-        locationConfirmed = true;
-        updateLocationConfirmationStatus();
-      }
+      updateReportTypeUI();
+      setLocation(midpoint.lat, midpoint.lng, false, segment.averageAccuracy || segment.averageAccuracyMeters || null);
+      locationConfirmed = true;
+      updateLocationConfirmationStatus();
 
       [
         "reportType", "condition", "severity"
@@ -4030,11 +4138,11 @@
       updateMeasurementVisibility();
       updateConditionHelp();
       openSurveyStep("conditionSection");
-      setMessage("Recorder review segment loaded into the report form. Add photos, measurements, and notes before submitting.", "ok");
+      setMessage("Recorder segment midpoint loaded into the point inspection form. Add photos, measurements, and notes before submitting.", "ok");
     }
 
     function updateRecorderUi() {
-      const reviewCount = recorderState.segments.filter((segment) => segment.reviewNeeded === "Yes").length;
+      const reviewCount = recorderState.segments.filter((segment) => segment.reviewNeeded === "Yes" && !segment.reviewed).length;
       field("recorderStatus").textContent = recorderStatusLabel(recorderState.status);
       field("recorderCurrentCondition").textContent = recorderConditionLabel(recorderState.condition);
       field("recorderAccuracy").textContent = recorderState.lastAccuracy ? recorderState.lastAccuracy + " m" : "--";
@@ -4312,7 +4420,7 @@
               startTime: segment.startTime,
               endTime: segment.endTime,
               notes: buildRecorderSegmentNotes(session, segment),
-              reviewed: false
+              reviewed: Boolean(segment.reviewed)
             }
           });
         });
