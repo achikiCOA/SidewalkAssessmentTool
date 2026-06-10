@@ -8,6 +8,8 @@ const RECORDER_SYNC_LOG_SHEET_NAME = "Recorder Sync Log";
 const RECORDER_REQUIRED_FIELDS = [
   "segmentId",
   "routeId",
+  "blockId",
+  "blockName",
   "condition",
   "conditionClass",
   "score",
@@ -21,6 +23,18 @@ const RECORDER_REQUIRED_FIELDS = [
   "reviewed",
   "notes",
   "photoCount"
+];
+const BLOCK_REQUIRED_FIELDS = [
+  "blockId",
+  "blockName",
+  "status",
+  "assignedTo",
+  "priority",
+  "lastInspectedAt",
+  "lastRouteId",
+  "lastCondition",
+  "lastScore",
+  "notes"
 ];
 const DEBUG = false;
 const REQUIRED_HEADERS = [
@@ -254,6 +268,19 @@ function handleRecorderSessionUpload(data) {
   }
 
   const result = syncRecorderSegmentsToArcGIS(data, segments);
+  if ((result.added || result.updated) && data.blockId) {
+    try {
+      const blockResult = updateArcGISBlockCompletion(data, segments);
+      result.blockStatus = blockResult ? "Complete" : "Block not found";
+    } catch (blockErr) {
+      result.blockStatus = "Failed";
+      result.errors.push({
+        segmentId: "",
+        error: "Block status update failed: " + blockErr.message
+      });
+      console.error("Block status update failed: " + (blockErr.stack || blockErr.message));
+    }
+  }
   logRecorderSync(data, result);
 
   return ContentService
@@ -295,6 +322,21 @@ function validateArcGISRecorderLayer() {
     message: missing.length
       ? "Recorder layer is missing recommended fields: " + missing.join(", ")
       : "Recorder layer has the recommended fields."
+  };
+}
+
+function validateArcGISBlockLayer() {
+  const layerUrl = getRequiredProperty("ARCGIS_BLOCK_LAYER_URL");
+  const fieldMap = getArcGISFieldNameMap(layerUrl);
+  const missing = BLOCK_REQUIRED_FIELDS.filter((fieldName) => !fieldMap[canonicalHeader(fieldName)]);
+
+  return {
+    ok: missing.length === 0,
+    layerUrl: layerUrl,
+    missingFields: missing,
+    message: missing.length
+      ? "Block layer is missing recommended fields: " + missing.join(", ")
+      : "Block layer has the recommended fields."
   };
 }
 
@@ -474,6 +516,8 @@ function buildRecorderArcGISAttributes(session, segment, layerUrl) {
     segmentId: textValue(segment.segmentId),
     routeId: textValue(segment.routeId || session.routeId || session.sessionId),
     sessionId: textValue(session.sessionId || session.routeId),
+    blockId: textValue(session.blockId),
+    blockName: textValue(session.blockName),
     routeName: textValue(session.routeName),
     inspectorName: textValue(session.inspectorName || session.recorderName),
     condition: textValue(segment.condition),
@@ -508,6 +552,42 @@ function buildRecorderNotesForSegment(session, segment) {
   return segmentNotes.concat(recorderNotes).join("; ");
 }
 
+function updateArcGISBlockCompletion(session, segments) {
+  const blockId = textValue(session.blockId);
+  if (!blockId) return null;
+
+  const layerUrl = getRequiredProperty("ARCGIS_BLOCK_LAYER_URL");
+  const existing = findArcGISObjectByField("blockId", blockId, layerUrl);
+  if (!existing) return null;
+
+  const summary = summarizeRecorderSegments(segments);
+  const attributes = filterArcGISAttributes({
+    status: "Complete",
+    lastInspectedAt: textValue(session.endedAt || new Date().toISOString()),
+    lastRouteId: textValue(session.routeId || session.sessionId),
+    lastCondition: summary.condition,
+    lastScore: summary.score,
+    notes: textValue(session.routeName || session.blockName || "")
+  }, layerUrl);
+  attributes[existing.objectIdFieldName] = existing.objectId;
+
+  return updateArcGISFeature(layerUrl, {
+    attributes: attributes
+  });
+}
+
+function summarizeRecorderSegments(segments) {
+  const list = Array.isArray(segments) ? segments : [];
+  const hasRed = list.some((segment) => textValue(segment.condition) === "Red");
+  const hasYellow = list.some((segment) => textValue(segment.condition) === "Yellow");
+  const scores = list.map((segment) => Number(segment.score)).filter(Number.isFinite);
+
+  return {
+    condition: hasRed ? "Red" : hasYellow ? "Yellow" : "Green",
+    score: scores.length ? Math.min.apply(null, scores) : null
+  };
+}
+
 function logRecorderSync(session, result) {
   try {
     const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
@@ -516,6 +596,8 @@ function logRecorderSync(session, result) {
       "loggedAt",
       "routeId",
       "sessionId",
+      "blockId",
+      "blockName",
       "routeName",
       "segmentCount",
       "added",
@@ -530,6 +612,8 @@ function logRecorderSync(session, result) {
       loggedAt: new Date().toISOString(),
       routeId: session.routeId || session.sessionId || "",
       sessionId: session.sessionId || session.routeId || "",
+      blockId: session.blockId || "",
+      blockName: session.blockName || "",
       routeName: session.routeName || "",
       segmentCount: Array.isArray(session.generatedSegments) ? session.generatedSegments.length : 0,
       added: result.added || 0,
@@ -877,6 +961,8 @@ function canonicalHeader(header) {
     routeid: "routeId",
     sessionid: "sessionId",
     segmentid: "segmentId",
+    blockid: "blockId",
+    blockname: "blockName",
     routename: "routeName",
     submittedat: "submittedAt",
     reportername: "reporterName",
@@ -907,6 +993,11 @@ function canonicalHeader(header) {
     conditionclass: "conditionClass",
     priorityscore: "priorityScore",
     priorityclass: "priorityClass",
+    assignedto: "assignedTo",
+    lastinspectedat: "lastInspectedAt",
+    lastrouteid: "lastRouteId",
+    lastcondition: "lastCondition",
+    lastscore: "lastScore",
     averagelocationaccuracy: "averageAccuracy",
     averageaccuracy: "averageAccuracy",
     pointcount: "pointCount",

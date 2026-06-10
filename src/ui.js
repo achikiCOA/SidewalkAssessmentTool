@@ -9,6 +9,7 @@
   const RECORDER_ACTIVE_STORAGE_KEY = "sidewalkRecorderActiveSession";
   const RECORDER_STORAGE_VERSION = 1;
   const UPLOAD_URL_KEY = "sidewalkAssessmentUploadUrl";
+  const BLOCK_LAYER_URL_KEY = "sidewalkAssessmentBlockLayerUrl";
   const CONTACT_STORAGE_KEY = "sidewalkAssessmentContact";
   const DRAFT_STORAGE_KEY = "sidewalkAssessmentDraft";
   const SURVEY_STEPS = [
@@ -86,7 +87,7 @@
   const MAX_TOTAL_PHOTO_BYTES = 20 * 1024 * 1024;
   const MAX_LOCAL_STORAGE_WARN_BYTES = 4 * 1024 * 1024;
   const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
-  
+
   let map = null;
   let marker = null;
   let accuracyCircle = null;
@@ -114,17 +115,20 @@
   let recorderStartFixActive = false;
   let recorderState = createEmptyRecorderState();
   let recorderLayers = [];
+  let recorderBlockLayers = [];
+  let recorderBlocks = [];
+  let selectedRecorderBlock = null;
   let recorderReviewFilter = "problem";
   let recorderDetailMode = "normal";
-  
+
   const field = window.App && window.App.dom && window.App.dom.field
     ? window.App.dom.field
     : (id) => document.getElementById(id);
   let appInitialized = false;
-  
+
   window.addEventListener("load", initApp);
   window.addEventListener("beforeunload", warnBeforeLeavingActiveRecorder);
-  
+
   function initApp() {
     if (appInitialized) {
       debugLog("App already initialized; skipping duplicate startup.");
@@ -141,19 +145,19 @@
     updateUploadStatus();
     runScoring();
     runRecorderSegmentSelfTest();
-  
+
     if (!window.L) {
       setMessage("Map library did not load. Check your internet connection and reload this file.", "error");
       return;
     }
-  
+
     try {
       initMap(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lng);
     } catch (error) {
       handleAppError("Map initialization failed.", error, setMessage);
     }
   }
-  
+
   function initMap(lat, lng) {
     if (map) {
       debugLog("Main map already initialized; skipping duplicate init.");
@@ -166,18 +170,18 @@
       zoomSnap: 0.5,
       zoomDelta: 0.5
     }).setView([lat, lng], 18);
-  
+
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "&copy; OpenStreetMap contributors",
       maxNativeZoom: 19,
       maxZoom: 22
     }).addTo(map);
-  
+
     marker = L.marker([lat, lng], {
       draggable: false,
       autoPan: true
     }).addTo(map);
-  
+
     map.on("click", (e) => {
       unlockLocation(false);
       suppressMapMoveUpdate = true;
@@ -192,7 +196,7 @@
       const point = marker.getLatLng();
       setLocation(point.lat, point.lng, true, null);
     });
-  
+
     field("locateButton").addEventListener("click", locateUser);
     field("locateSegmentButton").addEventListener("click", locateUser);
     field("confirmLocationButton").addEventListener("click", confirmLocation);
@@ -201,46 +205,46 @@
     attachResizeObserver(field("map"));
     setLocation(lat, lng, false, null);
     updateReportTypeUI();
-  
+
     setTimeout(() => map.invalidateSize(true), 100);
     setTimeout(() => map.invalidateSize(true), 500);
   }
-  
+
   function attachResizeObserver(el) {
     if (!("ResizeObserver" in window)) return;
     if (resizeObserver) resizeObserver.disconnect();
-  
+
     resizeObserver = new ResizeObserver(() => {
       if (map) map.invalidateSize(true);
     });
     resizeObserver.observe(el);
   }
-  
+
   function locateUser() {
     if (!navigator.geolocation) {
       setMessage("This browser does not support location lookup.", "error");
       return;
     }
-  
+
     locationLocked = false;
     setLocateButtonsDisabled(true);
     setMessage("Getting a high-accuracy GPS fix. This may take a few seconds.", "");
-  
+
     if (locationWatchId !== null) {
       navigator.geolocation.clearWatch(locationWatchId);
       locationWatchId = null;
     }
-  
+
     let bestPosition = null;
     const startedAt = Date.now();
     const stopTimer = window.setTimeout(stopWatchingLocation, 22000);
-  
+
     try {
       locationWatchId = navigator.geolocation.watchPosition(
         (position) => {
         const accuracy = Number(position.coords.accuracy);
         const isBetter = !bestPosition || accuracy < Number(bestPosition.coords.accuracy);
-  
+
         if (isBetter) {
           bestPosition = position;
           const lat = position.coords.latitude;
@@ -250,7 +254,7 @@
           map.setView([lat, lng], accuracy <= 20 ? 21 : 20);
           setMessage("GPS fix found. Accuracy: about " + Math.round(accuracy) + " m.", "ok");
         }
-  
+
         if (accuracy <= 10 || Date.now() - startedAt > 16000) {
           stopWatchingLocation();
         }
@@ -268,17 +272,17 @@
       stopWatchingLocation();
       handleAppError("GPS lookup failed.", error, setMessage);
     }
-  
+
     function stopWatchingLocation() {
       window.clearTimeout(stopTimer);
-  
+
       if (locationWatchId !== null) {
         navigator.geolocation.clearWatch(locationWatchId);
         locationWatchId = null;
       }
-  
+
       setLocateButtonsDisabled(false);
-  
+
       if (bestPosition) {
         const lat = bestPosition.coords.latitude;
         const lng = bestPosition.coords.longitude;
@@ -287,46 +291,46 @@
       }
     }
   }
-  
+
   function lockLocation(accuracyMeters) {
     locationLocked = true;
     setLocateButtonText("Improve Location");
     markLocationUnconfirmed();
     setMessage("GPS found your location. Pan the map until the target is on the sidewalk issue, then tap Use This Location.", "ok");
   }
-  
+
   function unlockLocation(showMessage) {
     locationLocked = false;
     setLocateButtonText("Use My Location");
-  
+
     if (locationWatchId !== null) {
       navigator.geolocation.clearWatch(locationWatchId);
       locationWatchId = null;
     }
-  
+
     if (showMessage) {
       setMessage("GPS lock cleared. Use My Location again or pan the map to the sidewalk issue.", "");
     }
   }
-  
+
   function setLocateButtonsDisabled(disabled) {
     field("locateButton").disabled = disabled;
     field("locateSegmentButton").disabled = disabled;
   }
-  
+
   function setLocateButtonText(text) {
     field("locateButton").textContent = text;
     field("locateSegmentButton").textContent = text;
   }
-  
+
   function updateLocationFromMapCenter() {
     if (suppressMapMoveUpdate) {
       suppressMapMoveUpdate = false;
       return;
     }
-  
+
     if (!map || !field("locationSection").open) return;
-  
+
     const center = map.getCenter();
     unlockLocation(false);
     if (isSegmentReport()) {
@@ -337,11 +341,11 @@
     setLocation(center.lat, center.lng, true, null);
     setMessage("Map center updated. Tap Use This Location when the target is on the sidewalk issue.", "");
   }
-  
+
   function isSegmentReport() {
     return field("reportType") && field("reportType").value === "Sidewalk Segment";
   }
-  
+
   function updateReportTypeUI() {
     const isSegment = isSegmentReport();
     field("pointLocationActions").classList.toggle("hidden", isSegment);
@@ -352,7 +356,7 @@
     field("locationHelp").textContent = isSegment
       ? "Sidewalk segment: place the target at the beginning of the bad stretch, set start, then move to the end and set end."
       : "Point issue: place the target on the exact spot and confirm point.";
-  
+
     if (isSegment) {
       updateSegmentPreview();
     } else {
@@ -362,32 +366,32 @@
     updateSegmentCaptureButton();
     refreshCurrentStepProgress();
   }
-  
+
   function handleSegmentCapture() {
     if (!segmentStart) {
       setSegmentPoint("start");
       return;
     }
-  
+
     if (!segmentEnd) {
       setSegmentPoint("end");
       return;
     }
-  
+
     confirmLocation();
   }
-  
+
   function setSegmentPoint(which) {
     if (!map) return;
     const center = map.getCenter();
     const point = { lat: center.lat, lng: center.lng };
-  
+
     if (which === "start") {
       segmentStart = point;
     } else {
       segmentEnd = point;
     }
-  
+
     updateSegmentPreview();
     const nextStep = which === "start" && !segmentEnd
       ? "Step 2 of 3: start set. Pan to the end of the section and tap Set End Point."
@@ -396,26 +400,26 @@
     updateSegmentCaptureButton();
     scheduleDraftSave();
   }
-  
+
   function clearSegment(showMessage = true) {
     segmentStart = null;
     segmentEnd = null;
-  
+
     if (segmentLine) {
       segmentLine.remove();
       segmentLine = null;
     }
-  
+
     if (segmentStartMarker) {
       segmentStartMarker.remove();
       segmentStartMarker = null;
     }
-  
+
     if (segmentEndMarker) {
       segmentEndMarker.remove();
       segmentEndMarker = null;
     }
-  
+
     field("segmentLengthFt").value = "";
     field("segmentStatus").textContent = "Step 1 of 3: set the segment start point.";
     updateSegmentCaptureButton();
@@ -423,25 +427,25 @@
     markLocationUnconfirmed();
     scheduleDraftSave();
   }
-  
+
   function updateSegmentPreview() {
     if (!map) return;
-  
+
     if (segmentLine) {
       segmentLine.remove();
       segmentLine = null;
     }
-  
+
     if (segmentStartMarker) {
       segmentStartMarker.remove();
       segmentStartMarker = null;
     }
-  
+
     if (segmentEndMarker) {
       segmentEndMarker.remove();
       segmentEndMarker = null;
     }
-  
+
     if (segmentStart) {
       segmentStartMarker = L.circleMarker([segmentStart.lat, segmentStart.lng], {
         radius: 7,
@@ -451,7 +455,7 @@
         fillOpacity: 0.8
       }).addTo(map).bindTooltip("Start");
     }
-  
+
     if (segmentEnd) {
       segmentEndMarker = L.circleMarker([segmentEnd.lat, segmentEnd.lng], {
         radius: 7,
@@ -461,7 +465,7 @@
         fillOpacity: 0.8
       }).addTo(map).bindTooltip("End");
     }
-  
+
     if (segmentStart && segmentEnd) {
       segmentLine = L.polyline([
         [segmentStart.lat, segmentStart.lng],
@@ -471,7 +475,7 @@
         weight: 5,
         opacity: 0.85
       }).addTo(map);
-  
+
       const lengthFt = calculateSegmentLengthFt(segmentStart, segmentEnd);
       const midpoint = getSegmentMidpoint();
       field("segmentLengthFt").value = String(Math.round(lengthFt));
@@ -494,11 +498,11 @@
       updateSegmentCaptureButton();
     }
   }
-  
+
   function updateSegmentCaptureButton() {
     const button = field("segmentCaptureButton");
     if (!button) return;
-  
+
     if (!segmentStart) {
       button.textContent = "Set Start Point";
     } else if (!segmentEnd) {
@@ -510,7 +514,7 @@
     }
     button.className = locationConfirmed && segmentStart && segmentEnd ? "confirmed" : "";
   }
-  
+
   function getSegmentMidpoint() {
     if (!segmentStart || !segmentEnd) return null;
     return {
@@ -518,7 +522,7 @@
       lng: (segmentStart.lng + segmentEnd.lng) / 2
     };
   }
-  
+
   function calculateSegmentLengthFt(start, end) {
     if (!start || !end) return 0;
     const earthRadiusMeters = 6371000;
@@ -532,76 +536,76 @@
     const meters = earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return meters * 3.28084;
   }
-  
+
   function setLocation(lat, lng, lookupAddress, accuracyMeters) {
     const cleanLat = Number(lat);
     const cleanLng = Number(lng);
-  
+
     field("latitude").value = cleanLat.toFixed(7);
     field("longitude").value = cleanLng.toFixed(7);
-  
+
     if (marker) marker.setLatLng([cleanLat, cleanLng]);
     updateAccuracy(cleanLat, cleanLng, accuracyMeters);
     markLocationUnconfirmed();
-  
+
     if (lookupAddress) {
       field("address").value = "Looking up address...";
       clearTimeout(addressTimer);
       addressTimer = setTimeout(() => reverseGeocode(cleanLat, cleanLng), 350);
     }
   }
-  
+
   function confirmLocation() {
     const defaultLat = DEFAULT_LOCATION.lat.toFixed(7);
     const defaultLng = DEFAULT_LOCATION.lng.toFixed(7);
-  
+
     if (isSegmentReport()) {
       if (!segmentStart || !segmentEnd) {
         setMessage("Set both the segment start and end points before confirming.", "error");
         openSection("locationSection");
         return;
       }
-  
+
       locationConfirmed = true;
       updateLocationConfirmationStatus();
       updateSegmentCaptureButton();
       setMessage("Segment confirmed. Continue through the report and submit when ready.", "ok");
       return;
     }
-  
+
     if (field("latitude").value === defaultLat && field("longitude").value === defaultLng) {
       setMessage("Use GPS or pan the map target to the sidewalk issue before confirming.", "error");
       openSection("locationSection");
       return;
     }
-  
+
     locationConfirmed = true;
     updateLocationConfirmationStatus();
     setMessage("Location confirmed. Continue through the report and submit when ready.", "ok");
     scheduleDraftSave();
   }
-  
+
   function markLocationUnconfirmed() {
     locationConfirmed = false;
     updateLocationConfirmationStatus();
     updateSegmentCaptureButton();
   }
-  
+
   function updateLocationConfirmationStatus() {
     const status = field("locationStatus");
     const button = field("confirmLocationButton");
     if (!status || !button) return;
-  
+
     status.textContent = locationConfirmed ? "Confirmed" : "Needs confirmation";
     status.className = locationConfirmed ? "location-confirmed" : "location-needs-confirmation";
     button.textContent = locationConfirmed ? "Point Confirmed" : "Confirm Point";
     button.className = locationConfirmed ? "confirmed" : "secondary";
   }
-  
+
   function updateAccuracy(lat, lng, accuracyMeters) {
     currentAccuracy = Number.isFinite(Number(accuracyMeters)) ? Number(accuracyMeters) : null;
     const accuracyValue = field("accuracyValue");
-  
+
     if (currentAccuracy) {
       const rounded = Math.round(currentAccuracy);
       const quality = rounded <= 15 ? "Good" : rounded <= 50 ? "Fair" : "Poor";
@@ -611,14 +615,14 @@
       accuracyValue.textContent = "--";
       accuracyValue.className = "";
     }
-  
+
     if (!map) return;
-  
+
     if (accuracyCircle) {
       accuracyCircle.remove();
       accuracyCircle = null;
     }
-  
+
     if (currentAccuracy) {
       accuracyCircle = L.circle([lat, lng], {
         radius: currentAccuracy,
@@ -630,11 +634,11 @@
       }).addTo(map);
     }
   }
-  
+
   async function reverseGeocode(lat, lng) {
     const url = "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=" +
       encodeURIComponent(lat) + "&lon=" + encodeURIComponent(lng);
-  
+
     try {
       const response = await fetch(url, {
         headers: { "Accept": "application/json" }
@@ -647,12 +651,12 @@
       setMessage("Address lookup is unavailable right now. Coordinates were captured.", "error");
     }
   }
-  
+
   function numericValue(id) {
     const value = Number(field(id).value);
     return Number.isFinite(value) ? value : 0;
   }
-  
+
   function calculateScores() {
     const conditions = getSelectedConditions();
     const severity = Number(field("severity").value);
@@ -666,7 +670,7 @@
     const detectableWarning = field("detectableWarning").value;
     const pedestrianVolume = field("pedestrianVolume").value;
     const schoolTransitProximity = field("schoolTransitProximity").value;
-  
+
     const severityPenalty = Math.max(0, severity - 1) * SCORE_CONFIG.severityPenaltyStep;
     const displacementPenalty = Math.min(SCORE_CONFIG.displacementPenaltyMax, verticalDisplacement * SCORE_CONFIG.displacementPenaltyPerInch);
     const gapPenalty = Math.min(SCORE_CONFIG.gapPenaltyMax, gapWidth * SCORE_CONFIG.gapPenaltyPerInch);
@@ -681,7 +685,7 @@
     const conditionPenalty = conditions.reduce((total, condition) => {
       return total + (SCORE_CONFIG.conditionPenalty[condition] || 0);
     }, 0);
-  
+
     const gisScore = 100 -
       Math.min(55, conditionPenalty) -
       severityPenalty -
@@ -693,7 +697,7 @@
       detectableWarningPenalty -
       runningSlopePenalty -
       crossSlopePenalty;
-  
+
     let priorityScore = (100 - Math.max(0, Math.min(100, gisScore))) * SCORE_CONFIG.priorityConditionWeight;
     priorityScore += severity * SCORE_CONFIG.prioritySeverityStep;
     priorityScore += verticalDisplacement >= 0.5 ? SCORE_CONFIG.priorityDisplacementHalfInch : 0;
@@ -707,17 +711,17 @@
     priorityScore += crossSlope > 2 ? SCORE_CONFIG.priorityCrossSlope : 0;
     priorityScore += pedestrianVolume === "High" ? SCORE_CONFIG.priorityPedestrianHigh : pedestrianVolume === "Medium" ? SCORE_CONFIG.priorityPedestrianMedium : 0;
     priorityScore += schoolTransitProximity === "Yes" ? SCORE_CONFIG.prioritySchoolTransit : 0;
-  
+
     return {
       gisScore: Math.round(Math.max(0, Math.min(100, gisScore))),
       priorityScore: Math.round(Math.max(0, Math.min(100, priorityScore)))
     };
   }
-  
+
   function calculateScore() {
     return calculateScores().gisScore;
   }
-  
+
   function getClass(score) {
     if (score >= 85) return "Excellent";
     if (score >= 70) return "Good";
@@ -725,38 +729,38 @@
     if (score >= 25) return "Poor";
     return "Failed";
   }
-  
+
   function getPriorityClass(score) {
     if (score >= 75) return "Critical";
     if (score >= 55) return "High";
     if (score >= 30) return "Medium";
     return "Low";
   }
-  
+
   function runScoring() {
     const scores = calculateScores();
     field("scoreValue").textContent = scores.gisScore + " / 100";
     field("scoreClass").textContent = getClass(scores.gisScore);
     field("priorityValue").textContent = getPriorityClass(scores.priorityScore) + " (" + scores.priorityScore + ")";
   }
-  
+
   function getSelectedConditions() {
     return Array.from(field("condition").selectedOptions)
       .map((option) => option.value || option.textContent)
       .filter((value) => value && value !== "No Issues");
   }
-  
+
   function setSelectedConditions(values) {
     const selected = values.length ? values : ["No Issues"];
     Array.from(field("condition").options).forEach((option) => {
       option.selected = selected.indexOf(option.value || option.textContent) !== -1;
     });
   }
-  
+
   function conditionIncludes(value) {
     return getSelectedConditions().indexOf(value) !== -1;
   }
-  
+
   function applyPreset(preset) {
     const presets = {
       trip: {
@@ -789,14 +793,14 @@
     };
     const config = presets[preset];
     if (!config) return;
-  
+
     field("reportType").value = config.reportType;
     field("severity").value = config.severity;
     setSelectedConditions(config.conditions);
     if (config.obstructionType) field("obstructionType").value = config.obstructionType;
     if (config.curbRampCondition) field("curbRampCondition").value = config.curbRampCondition;
     if (config.detectableWarning) field("detectableWarning").value = config.detectableWarning;
-  
+
     [
       "reportType", "condition", "severity", "obstructionType", "curbRampCondition", "detectableWarning"
     ].forEach(syncSegmentedControl);
@@ -806,11 +810,11 @@
     setMessage(config.message, "ok");
     scheduleDraftSave();
   }
-  
+
   function updateConditionHelp() {
     const help = field("conditionHelp");
     if (!help) return;
-  
+
     const conditions = getSelectedConditions();
     help.replaceChildren();
 
@@ -818,7 +822,7 @@
       appendConditionHelpParagraph(help, "Select a preset or choose all issue types that apply.");
       return;
     }
-  
+
     const guidance = {
       Cracking: "Cracking: note the length/extent in comments and measure any related gap or displacement.",
       Heaving: "Heaving: measure vertical displacement and add a close-up photo when it creates a trip hazard.",
@@ -829,7 +833,7 @@
       "Running Slope/Cross Slope": "Slope: running slope should generally be below 5% for sidewalks; cross slope should not exceed 2%.",
       Other: "Other: describe the issue clearly in comments and attach at least one context photo."
     };
-  
+
     conditions.forEach((condition) => {
       appendConditionHelpParagraph(help, guidance[condition] || condition);
     });
@@ -840,13 +844,13 @@
     paragraph.textContent = text;
     container.appendChild(paragraph);
   }
-  
+
   function enhanceConditionControl() {
     const select = field("condition");
     const segmented = document.createElement("div");
     segmented.className = "segmented";
     segmented.setAttribute("data-for", "condition");
-  
+
     Array.from(select.options).forEach((option) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -856,7 +860,7 @@
       button.addEventListener("click", () => {
         const value = button.dataset.value;
         let selected = getSelectedConditions();
-  
+
         if (value === "No Issues") {
           selected = [];
         } else if (selected.indexOf(value) === -1) {
@@ -864,7 +868,7 @@
         } else {
           selected = selected.filter((item) => item !== value);
         }
-  
+
         setSelectedConditions(selected);
         select.dispatchEvent(new Event("input", { bubbles: true }));
         select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -872,13 +876,13 @@
       });
       segmented.appendChild(button);
     });
-  
+
     setSelectedConditions([]);
     select.classList.add("enhanced-select");
     select.insertAdjacentElement("afterend", segmented);
     syncSegmentedControl("condition");
   }
-  
+
   function enhanceSelectControls() {
     enhanceConditionControl();
     [
@@ -889,7 +893,7 @@
       const segmented = document.createElement("div");
       segmented.className = "segmented";
       segmented.setAttribute("data-for", id);
-  
+
       Array.from(select.options).forEach((option) => {
         const button = document.createElement("button");
         button.type = "button";
@@ -904,18 +908,18 @@
         });
         segmented.appendChild(button);
       });
-  
+
       select.classList.add("enhanced-select");
       select.insertAdjacentElement("afterend", segmented);
       syncSegmentedControl(id);
     });
   }
-  
+
   function syncSegmentedControl(id) {
     const select = field(id);
     const segmented = document.querySelector('[data-for="' + id + '"]');
     if (!segmented) return;
-  
+
     segmented.querySelectorAll(".segment-button").forEach((button) => {
       if (id === "condition") {
         const selected = getSelectedConditions();
@@ -926,7 +930,7 @@
       }
     });
   }
-  
+
   function updateMeasurementVisibility() {
     const hasCracking = conditionIncludes("Cracking");
     const hasHeaving = conditionIncludes("Heaving");
@@ -945,7 +949,7 @@
       "running-slope": hasSlope || hasCurbRamp,
       "cross-slope": hasSlope
     };
-  
+
     document.querySelectorAll("[data-measurement]").forEach((group) => {
       const key = group.getAttribute("data-measurement");
       const isVisible = Boolean(visible[key]);
@@ -958,16 +962,16 @@
         }
       });
     });
-  
+
     [
       "condition", "obstructionType", "curbRampCondition", "detectableWarning"
     ].forEach(syncSegmentedControl);
     runScoring();
   }
-  
+
   function bindForm() {
     enhanceSelectControls();
-  
+
     [
       "reportType", "condition", "severity", "verticalDisplacement", "gapWidth", "runningSlope", "crossSlope", "obstructionType",
       "passableWidth", "curbRampCondition", "detectableWarning", "pedestrianVolume",
@@ -1005,6 +1009,9 @@
     field("exportAllRecorderGeoJsonButton").addEventListener("click", exportAllRecorderGeoJson);
     field("exportCurrentRecorderGeoJsonButton").addEventListener("click", exportCurrentRecorderGeoJson);
     field("clearRecorderSessionsButton").addEventListener("click", clearRecorderSessions);
+    field("loadBlocksButton").addEventListener("click", loadRecorderBlocks);
+    field("clearSelectedBlockButton").addEventListener("click", clearSelectedRecorderBlock);
+    field("zoomSelectedBlockButton").addEventListener("click", zoomSelectedRecorderBlock);
     document.querySelectorAll("[data-review-filter]").forEach((button) => {
       button.addEventListener("click", () => setRecorderReviewFilter(button.dataset.reviewFilter));
     });
@@ -1022,32 +1029,39 @@
     field("surveyForm").addEventListener("change", refreshCurrentStepProgress);
     field("surveyForm").addEventListener("input", scheduleDraftSave);
     field("surveyForm").addEventListener("change", scheduleDraftSave);
-  
+
     field("surveyForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       await submitReport();
     });
-  
+
     updateMeasurementVisibility();
     updateConditionHelp();
     openSurveyStep("locationSection", false);
     showDraftRecovery();
   }
-  
+
   function bindSettings() {
     field("uploadUrl").value = getUploadUrl();
+    field("blockLayerUrl").value = getBlockLayerUrl();
     field("saveSettingsButton").addEventListener("click", () => {
       const uploadUrl = field("uploadUrl").value.trim();
+      const blockLayerUrl = field("blockLayerUrl").value.trim();
       if (uploadUrl && !isValidUploadUrl(uploadUrl)) {
         setMessage("Upload URL was not saved. Use a valid HTTPS endpoint URL.", "error");
         return;
       }
+      if (blockLayerUrl && !isValidUploadUrl(blockLayerUrl)) {
+        setMessage("Block layer URL was not saved. Use a valid HTTPS ArcGIS layer URL.", "error");
+        return;
+      }
       localStorage.setItem(UPLOAD_URL_KEY, uploadUrl);
+      localStorage.setItem(BLOCK_LAYER_URL_KEY, blockLayerUrl);
       updateUploadStatus();
-      setMessage("Upload settings saved.", "ok");
+      setMessage("Settings saved.", "ok");
     });
   }
-  
+
   function updateStepProgress(activeSectionId) {
     const currentStep = SURVEY_STEPS.find((step) => step.id === activeSectionId) || SURVEY_STEPS[0];
     let actionText = currentStep.action;
@@ -1058,21 +1072,21 @@
     }
     field("nextAction").textContent = actionText;
   }
-  
+
   function refreshCurrentStepProgress() {
     const openSection = document.querySelector(".survey-section.active-step");
     updateStepProgress(openSection ? openSection.id : "locationSection");
   }
-  
+
   function scheduleDraftSave() {
     if (!draftAutosaveEnabled) return;
     window.clearTimeout(draftTimer);
     draftTimer = window.setTimeout(saveDraft, 300);
   }
-  
+
   function saveDraft() {
     if (!draftAutosaveEnabled) return;
-  
+
     const draft = {
       savedAt: new Date().toISOString(),
       reportType: field("reportType").value,
@@ -1102,20 +1116,20 @@
       segmentStart: segmentStart,
       segmentEnd: segmentEnd
     };
-  
+
     const hasUsefulDraft = draft.conditions.length || draft.comments || draft.photoNames.length ||
       draft.latitude !== DEFAULT_LOCATION.lat.toFixed(7) || draft.reporterName || draft.email;
-  
+
     if (hasUsefulDraft) {
       localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
     }
   }
-  
+
   function showDraftRecovery() {
     const draft = getSavedDraft();
     field("draftPanel").classList.toggle("visible", Boolean(draft));
   }
-  
+
   function getSavedDraft() {
     try {
       return JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY) || "null");
@@ -1124,11 +1138,11 @@
       return null;
     }
   }
-  
+
   function resumeDraft() {
     const draft = getSavedDraft();
     if (!draft) return;
-  
+
     draftAutosaveEnabled = false;
     field("reportType").value = draft.reportType || "Point Issue";
     field("reporterName").value = draft.reporterName || "";
@@ -1151,7 +1165,7 @@
     locationConfirmed = Boolean(draft.locationConfirmed);
     segmentStart = draft.segmentStart || null;
     segmentEnd = draft.segmentEnd || null;
-  
+
     [
       "reportType", "condition", "severity", "obstructionType", "curbRampCondition",
       "detectableWarning", "pedestrianVolume", "schoolTransitProximity"
@@ -1160,49 +1174,49 @@
     updateMeasurementVisibility();
     updateConditionHelp();
     updateContactSavedNote();
-  
+
     if (draft.latitude && draft.longitude) {
       setLocation(Number(draft.latitude), Number(draft.longitude), false, currentAccuracy);
       field("address").value = draft.address || "";
       locationConfirmed = Boolean(draft.locationConfirmed);
     }
-  
+
     if (segmentStart || segmentEnd) {
       updateSegmentPreview();
     } else {
       updateLocationConfirmationStatus();
     }
-  
+
     field("draftPanel").classList.remove("visible");
     openSurveyStep("locationSection");
     setMessage("Draft restored. Reattach photos if needed before submitting.", "ok");
     draftAutosaveEnabled = true;
     scheduleDraftSave();
   }
-  
+
   function discardDraft() {
     localStorage.removeItem(DRAFT_STORAGE_KEY);
     field("draftPanel").classList.remove("visible");
     setMessage("Draft cleared. Start a fresh report when ready.", "");
   }
-  
+
   function clearDraft() {
     localStorage.removeItem(DRAFT_STORAGE_KEY);
     field("draftPanel").classList.remove("visible");
   }
-  
+
   async function reviewReport() {
     try {
       const report = await buildReport();
       const validation = validateReport(report);
       populateReview(report);
-  
+
       if (!validation.ok) {
         setReviewNotice(validation.message + " Use the Edit button below to fix it.", "error");
         openSurveyStep("reviewSection");
         return;
       }
-  
+
       setReviewNotice("Ready to submit. Review the summary below, then submit when ready.", "ok");
       openSurveyStep("reviewSection");
       setMessage("Review the report summary, then submit when it looks right.", "ok");
@@ -1210,11 +1224,11 @@
       setMessage(error.message || "The report could not be reviewed.", "error");
     }
   }
-  
+
   function populateReview(report) {
     const review = field("reviewGrid");
     if (!review) return;
-  
+
     const locationText = report.reportType === "Sidewalk Segment"
       ? "Segment, " + (report.segmentLengthFt || "--") + " ft"
       : report.latitude + ", " + report.longitude;
@@ -1231,7 +1245,7 @@
       ["Priority", report.priorityClass + " (" + report.priorityScore + ")", "conditionSection"],
       ["GIS Score", report.score + " / 100 - " + report.conditionClass, "conditionSection"]
     ];
-  
+
     review.replaceChildren();
     reviewItems.forEach(([label, value, sectionId]) => {
       const div = document.createElement("div");
@@ -1251,23 +1265,23 @@
       div.append(actions, span);
       review.appendChild(div);
     });
-  
+
     review.querySelectorAll("[data-edit-section]").forEach((button) => {
       button.addEventListener("click", () => openSurveyStep(button.dataset.editSection));
     });
   }
-  
+
   function setReviewNotice(text, type) {
     const notice = field("reviewNotice");
     notice.textContent = text;
     notice.className = "message" + (type ? " " + type : "");
   }
-  
+
   function getCurrentReportSnapshot() {
     const scores = calculateScores();
     const photos = Array.from(field("photo").files || []);
     const segmentLength = segmentStart && segmentEnd ? Math.round(calculateSegmentLengthFt(segmentStart, segmentEnd)) : "";
-  
+
     return {
       reporterName: field("reporterName").value.trim(),
       email: field("email").value.trim(),
@@ -1290,7 +1304,7 @@
       priorityClass: getPriorityClass(scores.priorityScore)
     };
   }
-  
+
   function measurementSummary(report) {
     const parts = [];
     if (report.verticalDisplacement) parts.push("Vertical: " + report.verticalDisplacement + " in");
@@ -1302,7 +1316,7 @@
     if (report.detectableWarning && report.detectableWarning !== "Not Applicable") parts.push("Detectable warning: " + report.detectableWarning);
     return parts.length ? parts.join("; ") : "No measurements entered";
   }
-  
+
   function contextSummary(report) {
     const parts = [];
     if (report.pedestrianVolume) parts.push("Pedestrian volume: " + report.pedestrianVolume);
@@ -1310,12 +1324,12 @@
     if (report.comments) parts.push("Comments: " + report.comments);
     return parts.length ? parts.join("; ") : "--";
   }
-  
+
   function severityLabel(value) {
     const option = Array.from(field("severity").options).find((item) => item.value === String(value));
     return option ? option.textContent : String(value || "--");
   }
-  
+
   function updateContactSavedNote() {
     const contact = getSavedContactInfo();
     const hasSaved = Boolean(contact.reporterName || contact.email);
@@ -1323,7 +1337,7 @@
       (!contact.email || field("email").value === contact.email);
     field("contactSavedNote").classList.toggle("visible", hasSaved && matches);
   }
-  
+
   function escapeHtml(value) {
     return String(value === undefined || value === null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -1332,7 +1346,7 @@
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
   }
-  
+
   function sanitizeTextInput(value) {
     return String(value === undefined || value === null ? "" : value)
       .replace(/[\u0000-\u001F\u007F]/g, " ")
@@ -1341,14 +1355,14 @@
       .trim()
       .slice(0, 2000);
   }
-  
+
   async function submitReport() {
     field("submitButton").disabled = true;
-  
+
     try {
       const report = await buildReport();
       const validation = validateReport(report);
-  
+
       if (!validation.ok) {
         populateReview(report);
         setReviewNotice(validation.message + " Use the Edit button below to fix it.", "error");
@@ -1356,9 +1370,9 @@
         openSurveyStep("reviewSection");
         return;
       }
-  
+
       saveReport(report);
-  
+
       let uploaded = false;
       let uploadErrorMessage = "";
       try {
@@ -1368,7 +1382,7 @@
         debugLog("Upload failed after local save.", uploadError);
       }
       updateSavedCount();
-  
+
       if (uploaded === "sent") {
         setMessage("Report saved locally and sent to the spreadsheet endpoint. Check the sheet to confirm it arrived.", "ok");
       } else if (uploaded) {
@@ -1378,7 +1392,7 @@
       } else {
         setMessage("Report saved in this browser. Add the Google Apps Script or Power Automate URL to upload to a spreadsheet.", "ok");
       }
-  
+
       showSuccess(report);
       clearDraft();
       resetFormAfterSubmit();
@@ -1390,48 +1404,48 @@
       field("submitButton").disabled = false;
     }
   }
-  
+
   function validateReport(report) {
     const defaultLat = DEFAULT_LOCATION.lat.toFixed(7);
     const defaultLng = DEFAULT_LOCATION.lng.toFixed(7);
     const hasDefaultLocation = report.latitude === defaultLat && report.longitude === defaultLng;
     const severity = Number(report.severity);
-  
+
     if (report.website) {
       return { ok: false, sectionId: "conditionSection", message: "The report could not be submitted." };
     }
-  
+
     if (hasDefaultLocation) {
       return { ok: false, sectionId: "locationSection", message: "Use GPS or pan the map target to the sidewalk issue before submitting." };
     }
-  
+
     if (report.reportType === "Sidewalk Segment" && (!report.segmentStartLat || !report.segmentStartLng || !report.segmentEndLat || !report.segmentEndLng)) {
       return { ok: false, sectionId: "locationSection", message: "Set both the segment start and end points before submitting." };
     }
-  
+
     if (!locationConfirmed) {
       return { ok: false, sectionId: "locationSection", message: "Confirm the marker location before submitting." };
     }
-  
+
     if (!getSelectedConditions().length) {
       return { ok: false, sectionId: "conditionSection", message: "Choose at least one issue type before submitting." };
     }
-  
+
     if (report.locationAccuracy && Number(report.locationAccuracy) > 50) {
       return { ok: false, sectionId: "locationSection", message: "GPS accuracy is wider than 50 m. Use My Location again or pan the map target to the issue." };
     }
-  
+
     if (severity >= 3 && !report.photoName) {
       return { ok: false, sectionId: "photoSection", message: "Add a photo for poor or missing sidewalk reports." };
     }
-  
+
     if (conditionIncludes("Obstruction") && report.obstructionType === "None") {
       return { ok: false, sectionId: "measurementsSection", message: "Choose an obstruction type for obstruction reports." };
     }
-  
+
     return { ok: true };
   }
-  
+
   function showSuccess(report) {
     lastSubmittedReport = report;
     field("successReportId").textContent = report.reportId;
@@ -1446,7 +1460,7 @@
     field("surveyForm").style.display = "none";
     field("successPanel").scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  
+
   function resetFormAfterSubmit() {
     draftAutosaveEnabled = false;
     const contact = getSavedContactInfo();
@@ -1467,7 +1481,7 @@
     updateContactSavedNote();
     draftAutosaveEnabled = true;
   }
-  
+
   function startNewReport() {
     resetFormAfterSubmit();
     field("successPanel").style.display = "none";
@@ -1476,7 +1490,7 @@
     openSurveyStep("locationSection");
     setMessage("Start by choosing point or segment and confirming the map location.", "");
   }
-  
+
   function startNearbyReport() {
     const source = lastSubmittedReport || {};
     const lat = source.latitude || field("latitude").value;
@@ -1490,40 +1504,40 @@
     resetFormAfterSubmit();
     field("successPanel").style.display = "none";
     field("surveyForm").style.display = "";
-  
+
     if (keepType) {
       field("reportType").value = reportType;
     }
-  
+
     if (keepContext) {
       field("pedestrianVolume").value = pedestrianVolume;
       field("schoolTransitProximity").value = schoolTransitProximity;
     }
-  
+
     [
       "reportType", "pedestrianVolume", "schoolTransitProximity"
     ].forEach(syncSegmentedControl);
     updateReportTypeUI();
-  
+
     if (keepLocation && lat && lng) {
       setLocation(Number(lat), Number(lng), false, currentAccuracy);
     }
-  
+
     openSurveyStep("locationSection");
     setMessage("Starting another report near the last location.", "ok");
     scheduleDraftSave();
   }
-  
+
   function openSection(sectionId) {
     openSurveyStep(sectionId);
   }
-  
+
   function openSurveyStep(sectionId, shouldScroll = true) {
     document.querySelectorAll(".survey-section").forEach((section) => {
       section.open = section.id === sectionId;
       section.classList.toggle("active-step", section.id === sectionId);
     });
-  
+
     const section = field(sectionId);
     if (section && "open" in section) {
       section.open = true;
@@ -1537,7 +1551,7 @@
       }
     }
   }
-  
+
   function startAssessment() {
     field("introScreen").style.display = "none";
     field("appShell").style.display = "grid";
@@ -1549,7 +1563,7 @@
       setTimeout(() => map.invalidateSize(true), 100);
     }
   }
-  
+
   function saveContactInfo() {
     const contact = {
       reporterName: sanitizeTextInput(field("reporterName").value),
@@ -1558,7 +1572,7 @@
     localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(contact));
     updateContactSavedNote();
   }
-  
+
   function getSavedContactInfo() {
     try {
       return JSON.parse(localStorage.getItem(CONTACT_STORAGE_KEY) || "{}");
@@ -1567,14 +1581,14 @@
       return {};
     }
   }
-  
+
   function restoreContactInfo() {
     const contact = getSavedContactInfo();
     field("reporterName").value = contact.reporterName || "";
     field("email").value = contact.email || "";
     updateContactSavedNote();
   }
-  
+
   async function buildReport() {
     const scores = calculateScores();
     const photos = Array.from(field("photo").files || []);
@@ -1594,7 +1608,7 @@
         data: dataUrl
       };
     }));
-  
+
     return {
       reportId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
       submittedAt: new Date().toISOString(),
@@ -1639,15 +1653,15 @@
       gpsLocked: locationLocked ? "Yes" : "No"
     };
   }
-  
+
   function updatePhotoStatus() {
     const photos = Array.from(field("photo").files || []);
     const previewGrid = field("photoPreviewGrid");
-  
+
     photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
     photoPreviewUrls = [];
     previewGrid.replaceChildren();
-  
+
     const validation = validatePhotoFiles(photos);
     if (!validation.ok) {
       field("photoStatus").textContent = validation.message;
@@ -1657,18 +1671,18 @@
       setMessage(validation.message, "error");
       return;
     }
-  
+
     if (!photos.length) {
       field("photoStatus").textContent = "No photo selected.";
       field("photoCountStatus").textContent = "0 photos attached";
       previewGrid.style.display = "none";
       return;
     }
-  
+
     const totalKb = photos.reduce((total, photo) => total + Math.max(1, Math.round(photo.size / 1024)), 0);
     field("photoStatus").textContent = photos.length + " photo" + (photos.length === 1 ? "" : "s") + " selected (" + totalKb + " KB total)";
     field("photoCountStatus").textContent = photos.length + " photo" + (photos.length === 1 ? "" : "s") + " attached";
-  
+
     photos.forEach((photo, index) => {
       const url = URL.createObjectURL(photo);
       const card = document.createElement("div");
@@ -1687,25 +1701,25 @@
       previewGrid.appendChild(card);
       photoPreviewUrls.push(url);
     });
-  
+
     previewGrid.style.display = "grid";
     openSection("conditionSection");
   }
-  
+
   function getPhotoCaption(index) {
     const input = field("photoCaption" + index);
     return input ? sanitizeTextInput(input.value) : "";
   }
-  
+
   function getPhotoCaptions() {
     return Array.from(field("photo").files || []).map((photo, index) => getPhotoCaption(index));
   }
-  
+
   function getDataUrlType(dataUrl) {
     const match = /^data:([^;]+);base64,/.exec(dataUrl || "");
     return match ? match[1] : "";
   }
-  
+
   function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
       if (file.type && file.type.indexOf("image/") === 0) {
@@ -1715,11 +1729,11 @@
         });
         return;
       }
-  
+
       readOriginalFile(file, resolve, reject);
     });
   }
-  
+
   function readOriginalFile(file, resolve, reject) {
     try {
       const reader = new FileReader();
@@ -1730,12 +1744,12 @@
       reject(error);
     }
   }
-  
+
   function resizePhoto(file) {
     return new Promise((resolve, reject) => {
       const image = new Image();
       const reader = new FileReader();
-  
+
       reader.onload = () => {
         image.onload = () => {
           const maxSize = 600;
@@ -1744,7 +1758,7 @@
           const height = Math.max(1, Math.round(image.height * scale));
           const canvas = document.createElement("canvas");
           const context = canvas.getContext("2d");
-  
+
           canvas.width = width;
           canvas.height = height;
           context.drawImage(image, 0, 0, width, height);
@@ -1753,7 +1767,7 @@
         image.onerror = reject;
         image.src = reader.result;
       };
-  
+
       reader.onerror = () => reject(new Error("Photo could not be resized."));
       try {
         reader.readAsDataURL(file);
@@ -1762,26 +1776,26 @@
       }
     });
   }
-  
+
   async function uploadReport(report) {
     const uploadUrl = getUploadUrl();
     if (!uploadUrl) return false;
     if (!isValidUploadUrl(uploadUrl)) {
       throw new Error("Upload URL is invalid. Use a valid HTTPS endpoint.");
     }
-  
+
     if (uploadUrl.indexOf("script.google.com") !== -1) {
       await uploadGoogleReport(uploadUrl, report);
       return "sent";
     }
-  
+
     try {
       const response = await fetch(uploadUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(report)
       });
-  
+
       if (!response.ok) {
         throw new Error("Spreadsheet upload failed.");
       }
@@ -1798,10 +1812,10 @@
         throw new Error("Sync failed. " + getErrorMessage(fallbackError));
       }
     }
-  
+
     return true;
   }
-  
+
   async function uploadGoogleReport(uploadUrl, report) {
     const metadata = Object.assign({}, report, {
       action: "report",
@@ -1810,9 +1824,9 @@
       photoData: "",
       photoDataList: []
     });
-  
+
     await postJsonNoCors(uploadUrl, metadata);
-  
+
     if (report.photoDataList.length) {
       for (let i = 0; i < report.photoDataList.length; i++) {
         const photo = report.photoDataList[i];
@@ -1837,7 +1851,7 @@
       });
     }
   }
-  
+
   function postJsonNoCors(uploadUrl, data) {
     if (!isValidUploadUrl(uploadUrl)) {
       return Promise.reject(new Error("Upload URL is invalid."));
@@ -1851,8 +1865,8 @@
       throw new Error("Sync failed. " + getErrorMessage(error));
     });
   }
-  
-  
+
+
   function getReports() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -1861,7 +1875,7 @@
       return [];
     }
   }
-  
+
   function saveReport(report) {
     const reports = getReports();
     const localReport = Object.assign({}, report, {
@@ -1869,7 +1883,7 @@
       photoDataList: [],
       photoDataStored: Boolean(report.photoCount)
     });
-  
+
     try {
       reports.push(localReport);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
@@ -1878,23 +1892,28 @@
       handleAppError("Local report backup was skipped.", error, setMessage);
     }
   }
-  
+
   function updateSavedCount() {
     field("savedCount").textContent = String(getReports().length);
   }
-  
+
   function resetSavedReportsFromUrl() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("reset") === "savedReports") {
       localStorage.removeItem(STORAGE_KEY);
     }
   }
-  
+
   function getUploadUrl() {
     const uploadUrl = localStorage.getItem(UPLOAD_URL_KEY) || DEFAULT_UPLOAD_URL || "";
     return isValidUploadUrl(uploadUrl) ? uploadUrl : "";
   }
-  
+
+  function getBlockLayerUrl() {
+    const blockLayerUrl = localStorage.getItem(BLOCK_LAYER_URL_KEY) || "";
+    return isValidUploadUrl(blockLayerUrl) ? blockLayerUrl : "";
+  }
+
   function isValidUploadUrl(url) {
     if (!url) return true;
     try {
@@ -1904,35 +1923,35 @@
       return false;
     }
   }
-  
+
   function updateUploadStatus() {
     const hasUrl = Boolean(getUploadUrl());
     const uploadText = hasUrl ? "Spreadsheet upload configured" : "Spreadsheet upload not configured";
     field("uploadStatus").textContent = uploadText + " · " + APP_VERSION;
   }
-  
+
   function updateSettingsVisibility() {
     const params = new URLSearchParams(window.location.search);
     const showSettings = params.get("settings") === "1";
     field("uploadSettings").classList.toggle("visible", showSettings);
     field("localExport").classList.toggle("visible", showSettings);
   }
-  
+
   function setMessage(text, type) {
     const message = field("formMessage");
     message.textContent = text;
     message.className = "message" + (type ? " " + type : "");
   }
-  
+
   function handleAppError(userMessage, error, messageFn = setMessage) {
     debugLog(userMessage, error);
     messageFn(userMessage + " " + getErrorMessage(error), "error");
   }
-  
+
   function getErrorMessage(error) {
     return error && error.message ? error.message : "";
   }
-  
+
   function createEmptyRecorderState() {
     return {
       sessionId: "",
@@ -1941,6 +1960,9 @@
       startedAt: "",
       endedAt: "",
       routeName: "",
+      blockId: "",
+      blockName: "",
+      blockStatus: "",
       recorderName: "",
       email: "",
       points: [],
@@ -1951,45 +1973,46 @@
       lastAccuracy: null
     };
   }
-  
+
   function startRecorderMode() {
     field("introScreen").style.display = "none";
     field("appShell").style.display = "grid";
     field("surveyPanel").style.display = "none";
     field("recorderPanel").classList.add("visible");
-  
+
     const contact = getSavedContactInfo();
     field("recorderName").value = contact.reporterName || "";
     field("recorderEmail").value = contact.email || "";
-  
+
     initRecorderMap();
     restoreActiveRecorderState();
+    updateSelectedBlockUi();
     updateRecorderUi();
     renderRecorderReviewList();
     if (recorderState.status === "idle") {
       setRecorderMessage("Recorder ready. Default condition is Green / Good.", "");
     }
   }
-  
+
   function backToIntroFromRecorder() {
     if (recorderState.status === "recording" || recorderState.status === "paused") {
       setRecorderMessage("Stop the active recording before leaving Recorder Mode.", "error");
       return;
     }
-  
+
     stopRecorderStartWatch();
     field("recorderPanel").classList.remove("visible");
     field("surveyPanel").style.display = "";
     field("appShell").style.display = "none";
     field("introScreen").style.display = "";
   }
-  
+
   function initRecorderMap() {
     if (recorderMap || !window.L) {
       if (recorderMap) setTimeout(() => recorderMap.invalidateSize(true), 100);
       return;
     }
-  
+
     try {
       recorderMap = L.map("recorderMap", {
         tap: true,
@@ -1998,42 +2021,168 @@
         zoomSnap: 0.5,
         zoomDelta: 0.5
       }).setView([DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lng], 18);
-  
+
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "&copy; OpenStreetMap contributors",
         maxNativeZoom: 19,
         maxZoom: 22
       }).addTo(recorderMap);
-  
+
       attachRecorderResizeObserver(field("recorderMap"));
       setTimeout(() => recorderMap.invalidateSize(true), 100);
       setTimeout(() => recorderMap.invalidateSize(true), 500);
+      loadRecorderBlocks();
     } catch (error) {
       handleAppError("Recorder map initialization failed.", error, setRecorderMessage);
     }
   }
-  
+
   function attachRecorderResizeObserver(el) {
     if (!("ResizeObserver" in window) || !el) return;
     if (recorderResizeObserver) recorderResizeObserver.disconnect();
-  
+
     recorderResizeObserver = new ResizeObserver(() => {
       if (recorderMap) recorderMap.invalidateSize(true);
     });
     recorderResizeObserver.observe(el);
   }
-  
+
+  async function loadRecorderBlocks() {
+    const blockLayerUrl = getBlockLayerUrl();
+    if (!blockLayerUrl || !recorderMap) return;
+
+    try {
+      clearRecorderBlockLayers();
+      const queryUrl = blockLayerUrl.replace(/\/+$/, "") +
+        "/query?where=1%3D1&outFields=blockId,blockName,status,assignedTo,priority&returnGeometry=true&outSR=4326&f=json";
+      const response = await fetch(queryUrl, {
+        headers: { "Accept": "application/json" }
+      });
+      if (!response.ok) throw new Error("Block layer query failed.");
+
+      const result = await response.json();
+      if (result.error) throw new Error(result.error.message || "Block layer query failed.");
+
+      recorderBlocks = (result.features || []).map(normalizeRecorderBlockFeature).filter(Boolean);
+      renderRecorderBlocks();
+      setRecorderMessage(recorderBlocks.length
+        ? "Loaded " + recorderBlocks.length + " sidewalk blocks. Tap a block line to select it before recording."
+        : "Block layer loaded, but no block features were found.",
+        recorderBlocks.length ? "ok" : "error");
+    } catch (error) {
+      setRecorderMessage("Blocks could not be loaded. Make sure the ArcGIS block layer is shared publicly or clear the block layer URL. " + getErrorMessage(error), "error");
+    }
+  }
+
+  function normalizeRecorderBlockFeature(feature) {
+    const attributes = feature.attributes || {};
+    const paths = feature.geometry && Array.isArray(feature.geometry.paths) ? feature.geometry.paths : [];
+    if (!paths.length) return null;
+
+    return {
+      blockId: textFromAttributes(attributes, ["blockId", "blockid", "BLOCKID"]),
+      blockName: textFromAttributes(attributes, ["blockName", "blockname", "BLOCKNAME"]),
+      status: textFromAttributes(attributes, ["status", "STATUS"]) || "Not Started",
+      assignedTo: textFromAttributes(attributes, ["assignedTo", "assignedto", "ASSIGNEDTO"]),
+      priority: textFromAttributes(attributes, ["priority", "PRIORITY"]),
+      paths: paths
+    };
+  }
+
+  function textFromAttributes(attributes, names) {
+    for (const name of names) {
+      if (attributes[name] !== undefined && attributes[name] !== null) return String(attributes[name]);
+    }
+    return "";
+  }
+
+  function renderRecorderBlocks() {
+    clearRecorderBlockLayers();
+    recorderBlocks.forEach((block) => {
+      block.paths.forEach((path) => {
+        const latLngs = path.map((coordinate) => [coordinate[1], coordinate[0]]);
+        const layer = L.polyline(latLngs, {
+          color: recorderBlockColor(block.status),
+          weight: block.status === "Complete" ? 5 : 7,
+          opacity: block.status === "Complete" ? 0.55 : 0.85,
+          dashArray: block.status === "Complete" ? "6 6" : null
+        }).addTo(recorderMap);
+        layer.bindTooltip((block.blockName || block.blockId || "Sidewalk block") + " - " + block.status);
+        layer.on("click", () => selectRecorderBlock(block));
+        recorderBlockLayers.push({ blockId: block.blockId, layer: layer });
+      });
+    });
+  }
+
+  function clearRecorderBlockLayers() {
+    recorderBlockLayers.forEach((item) => item.layer.remove());
+    recorderBlockLayers = [];
+  }
+
+  function recorderBlockColor(status) {
+    if (status === "Complete") return "#16a34a";
+    if (status === "In Progress") return "#f59e0b";
+    return "#6b7280";
+  }
+
+  function selectRecorderBlock(block) {
+    selectedRecorderBlock = block;
+    field("recorderRouteName").value = block.blockName || block.blockId || "";
+    updateSelectedBlockUi();
+    if (block.status === "Complete") {
+      setRecorderMessage("Selected block is already Complete. Choose another block to avoid duplicate surveys.", "error");
+    } else {
+      setRecorderMessage("Selected block: " + (block.blockName || block.blockId || "Unnamed block") + ".", "ok");
+    }
+  }
+
+  function clearSelectedRecorderBlock() {
+    selectedRecorderBlock = null;
+    updateSelectedBlockUi();
+    setRecorderMessage("Block selection cleared.", "");
+  }
+
+  function updateSelectedBlockUi() {
+    const label = field("selectedBlockLabel");
+    const status = field("selectedBlockStatus");
+    if (!selectedRecorderBlock) {
+      label.textContent = "No block selected";
+      status.textContent = "--";
+      status.className = "block-status-pill";
+      return;
+    }
+
+    label.textContent = selectedRecorderBlock.blockName || selectedRecorderBlock.blockId || "Unnamed block";
+    status.textContent = selectedRecorderBlock.status || "Not Started";
+    status.className = "block-status-pill" +
+      (selectedRecorderBlock.status === "Complete" ? " complete" : "") +
+      (selectedRecorderBlock.status === "In Progress" ? " in-progress" : "");
+  }
+
+  function zoomSelectedRecorderBlock() {
+    if (!selectedRecorderBlock || !recorderMap) {
+      setRecorderMessage("Select a block first.", "error");
+      return;
+    }
+
+    const items = recorderBlockLayers.filter((item) => item.blockId === selectedRecorderBlock.blockId);
+    if (!items.length) return;
+
+    const group = L.featureGroup(items.map((item) => item.layer));
+    recorderMap.fitBounds(group.getBounds(), { padding: [24, 24], maxZoom: 21 });
+  }
+
   function startRecorder() {
     if (!navigator.geolocation) {
       setRecorderMessage("This browser does not support GPS recording.", "error");
       return;
     }
-  
+
     if (recorderStartFixActive) {
       setRecorderMessage("Wait for the GPS start fix to finish, then tap Start.", "error");
       return;
     }
-  
+
     try {
       initRecorderMap();
     } catch (error) {
@@ -2049,6 +2198,15 @@
     recorderState.condition = "Green";
     recorderState.startedAt = new Date().toISOString();
     recorderState.routeName = sanitizeTextInput(field("recorderRouteName").value);
+    if (selectedRecorderBlock && selectedRecorderBlock.status === "Complete") {
+      setRecorderMessage("This block is already marked Complete. Choose another block or clear the block selection before recording.", "error");
+      recorderState = createEmptyRecorderState();
+      updateRecorderUi();
+      return;
+    }
+    recorderState.blockId = selectedRecorderBlock ? selectedRecorderBlock.blockId : "";
+    recorderState.blockName = selectedRecorderBlock ? selectedRecorderBlock.blockName : "";
+    recorderState.blockStatus = selectedRecorderBlock ? selectedRecorderBlock.status : "";
     recorderState.recorderName = sanitizeTextInput(field("recorderName").value);
     recorderState.email = sanitizeTextInput(field("recorderEmail").value);
     recorderState.lastAccuracy = recorderStartPoint ? recorderStartPoint.accuracyMeters : null;
@@ -2059,7 +2217,7 @@
         ? "Recording started with the improved GPS start as a guide. The first live GPS point will start the recorded line."
         : "Recording started. For better accuracy, you can stop and use Improve GPS before starting.",
       "ok");
-  
+
     try {
       recorderWatchId = navigator.geolocation.watchPosition(
         handleGpsPoint,
@@ -2073,43 +2231,43 @@
       handleAppError("Recorder GPS watch failed.", error, setRecorderMessage);
       return;
     }
-  
+
     updateRecorderUi();
     saveActiveRecorderState();
     debugRecorder("Recorder started", { sessionId: recorderState.sessionId });
   }
-  
+
   function startRecording() {
     startRecorder();
   }
-  
+
   function improveRecorderGpsStart() {
     if (!navigator.geolocation) {
       setRecorderMessage("This browser does not support GPS lookup.", "error");
       return;
     }
-  
+
     if (recorderState.status === "recording" || recorderState.status === "paused") {
       setRecorderMessage("Improve GPS before starting a recording, or stop this recording first.", "error");
       return;
     }
-  
+
     initRecorderMap();
     stopRecorderStartWatch();
     recorderStartPoint = null;
     recorderStartFixActive = true;
     field("improveRecorderGpsButton").disabled = true;
     setRecorderMessage("Getting a better GPS start fix. Stand near the starting point for a few seconds.", "");
-  
+
     let bestPosition = null;
     const startedAt = Date.now();
     const stopTimer = window.setTimeout(finishRecorderStartFix, 22000);
-  
+
     recorderStartWatchId = navigator.geolocation.watchPosition(
       (position) => {
         const accuracy = Number(position.coords.accuracy);
         const isBetter = !bestPosition || accuracy < Number(bestPosition.coords.accuracy);
-  
+
         if (isBetter) {
           bestPosition = position;
           const lat = position.coords.latitude;
@@ -2130,7 +2288,7 @@
           updateRecorderUi();
           setRecorderMessage("Best start fix so far: about " + (cleanAccuracy || "--") + " m.", "ok");
         }
-  
+
         if (Number(position.coords.accuracy) <= 8 || Date.now() - startedAt > 16000) {
           finishRecorderStartFix();
         }
@@ -2144,13 +2302,13 @@
       },
       { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
     );
-  
+
     function finishRecorderStartFix() {
       window.clearTimeout(stopTimer);
       stopRecorderStartWatch();
       recorderStartFixActive = false;
       field("improveRecorderGpsButton").disabled = false;
-  
+
       if (recorderStartPoint) {
         setRecorderMessage("Improved GPS start saved. Accuracy: about " + (recorderStartPoint.accuracyMeters || "--") + " m. Tap Start when ready.", "ok");
       } else {
@@ -2158,7 +2316,7 @@
       }
     }
   }
-  
+
   function stopRecorderStartWatch() {
     if (recorderStartWatchId !== null) {
       navigator.geolocation.clearWatch(recorderStartWatchId);
@@ -2166,17 +2324,17 @@
     }
     recorderStartFixActive = false;
   }
-  
+
   function handleStartPauseRecording() {
     triggerHapticFeedback(18);
     if (recorderState.status === "recording" || recorderState.status === "paused") {
       togglePauseRecording();
       return;
     }
-  
+
     startRecorder();
   }
-  
+
   function togglePauseRecording() {
     if (recorderState.status === "recording") {
       recorderState.status = "paused";
@@ -2185,22 +2343,22 @@
       recorderState.status = "recording";
       setRecorderMessage("Recording resumed.", "ok");
     }
-  
+
     saveActiveRecorderState();
     updateRecorderUi();
   }
-  
+
   function stopRecorder() {
     if (recorderState.status === "idle") return;
-  
+
     if (recorderState.points.length < 2) {
       const shouldStop = window.confirm("Are you sure you want to stop? This recording has fewer than 2 accepted GPS points, so it cannot create a sidewalk line segment yet.");
       if (!shouldStop) return;
     }
-  
+
     triggerHapticFeedback([20, 40, 20]);
     stopRecorderWatch();
-  
+
     if (recorderState.points.length < 2) {
       recorderState.status = "idle";
       recorderState.endedAt = "";
@@ -2209,12 +2367,12 @@
       debugRecorder("Recorder stopped without enough points", { pointCount: recorderState.points.length });
       return;
     }
-  
+
     recorderState.status = "stopped";
     recorderState.endedAt = new Date().toISOString();
     recorderState.segments = rebuildSegmentsFromPoints(recorderState.points);
     recorderState.distanceFt = Math.round(recorderState.segments.reduce((total, segment) => total + segment.distanceFt, 0));
-  
+
     const savedSession = saveRecorderSession(createRecorderSessionPayload(recorderState));
     clearActiveRecorderState();
     renderSegments();
@@ -2228,24 +2386,24 @@
       distanceFt: recorderState.distanceFt
     });
   }
-  
+
   function stopRecording() {
     stopRecorder();
   }
-  
+
   function stopRecorderWatch() {
     if (recorderWatchId !== null) {
       navigator.geolocation.clearWatch(recorderWatchId);
       recorderWatchId = null;
     }
   }
-  
+
   function handleGpsPoint(position) {
     if (recorderState.status !== "recording") return;
-  
+
     const accuracy = Number(position.coords.accuracy);
     recorderState.lastAccuracy = Number.isFinite(accuracy) ? Math.round(accuracy) : null;
-  
+
     const point = {
       pointId: makeId("RPT"),
       timestamp: new Date(position.timestamp || Date.now()).toISOString(),
@@ -2256,29 +2414,29 @@
       heading: Number.isFinite(position.coords.heading) ? position.coords.heading : "",
       condition: recorderState.condition
     };
-  
+
     if (!shouldAcceptGpsPoint(point)) {
       updateRecorderUi();
       return;
     }
-  
+
     recorderState.points.push(point);
     recorderState.segments = rebuildSegmentsFromPoints(recorderState.points);
     recorderState.distanceFt = Math.round(recorderState.segments.reduce((total, segment) => total + segment.distanceFt, 0));
     renderSegments();
     updateRecorderUi();
     saveActiveRecorderState();
-  
+
     if (recorderMap && recorderState.points.length === 1) {
       recorderMap.setView([point.latitude, point.longitude], recorderState.lastAccuracy && recorderState.lastAccuracy <= 20 ? 21 : 20);
     }
     debugRecorder("GPS point accepted", point);
   }
-  
+
   function handleRecorderPosition(position) {
     handleGpsPoint(position);
   }
-  
+
   function shouldAcceptGpsPoint(point) {
     const accuracy = Number(point.accuracyMeters);
     if (Number.isFinite(accuracy) && accuracy > RECORDER_MAX_ACCURACY_METERS) {
@@ -2286,14 +2444,14 @@
       debugRecorder("GPS point rejected for accuracy", { accuracyMeters: accuracy });
       return false;
     }
-  
+
     const previous = recorderState.points[recorderState.points.length - 1];
     if (!previous && Number.isFinite(accuracy) && accuracy > RECORDER_START_MAX_ACCURACY_METERS) {
       setRecorderMessage("Waiting for a better starting GPS fix. Start accuracy is about " + Math.round(accuracy) + " m; waiting for 10 m or better.", "error");
       debugRecorder("GPS point rejected for start accuracy", { accuracyMeters: accuracy });
       return false;
     }
-  
+
     if (previous) {
       const distanceMeters = calculateDistanceMeters(previous, point);
       const minimumDistanceMeters = getRecorderMinimumDistanceMeters();
@@ -2306,16 +2464,16 @@
         return false;
       }
     }
-  
+
     return true;
   }
-  
+
   function getRecorderMinimumDistanceMeters() {
     return recorderDetailMode === "high"
       ? RECORDER_HIGH_DETAIL_DISTANCE_METERS
       : RECORDER_NORMAL_DISTANCE_METERS;
   }
-  
+
   function calculateDistanceMeters(a, b) {
     if (window.App && window.App.gpsRecorder && window.App.gpsRecorder.calculateDistanceMeters) {
       return window.App.gpsRecorder.calculateDistanceMeters(a, b);
@@ -2327,7 +2485,7 @@
     const bLat = Number(b.latitude ?? b.lat);
     const bLng = Number(b.longitude ?? b.lng);
     if (![aLat, aLng, bLat, bLng].every(Number.isFinite)) return 0;
-  
+
     const earthRadiusMeters = 6371000;
     const lat1 = aLat * Math.PI / 180;
     const lat2 = bLat * Math.PI / 180;
@@ -2338,18 +2496,18 @@
       Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
     return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
   }
-  
+
   function debugRecorder(message, data) {
     if (!RECORDER_DEBUG) return;
     debugLog("[Recorder] " + message, data);
   }
-  
+
   function debugLog(message, data) {
     if (!DEBUG) return;
     if (data === undefined) console.debug(message);
     else console.debug(message, data);
   }
-  
+
   function runRecorderSegmentSelfTest() {
     if (!RECORDER_DEBUG) return;
     const start = Date.parse("2026-01-01T00:00:00.000Z");
@@ -2368,7 +2526,7 @@
       segments: segments
     });
   }
-  
+
   function makeRecorderTestPoint(lat, lng, condition, timestampMs) {
     return {
       pointId: makeId("TPT"),
@@ -2381,7 +2539,7 @@
       condition: condition
     };
   }
-  
+
   function triggerHapticFeedback(pattern = 20) {
     if (!navigator.vibrate) return;
     try {
@@ -2390,7 +2548,7 @@
       debugRecorder("Haptic feedback unavailable", error);
     }
   }
-  
+
   function setRecorderDetailMode(mode) {
     recorderDetailMode = mode === "high" ? "high" : "normal";
     document.querySelectorAll("[data-recorder-detail-mode]").forEach((button) => {
@@ -2404,7 +2562,7 @@
       : "Normal mode enabled. Recorder accepts movement over 2 m to save battery and reduce GPS jitter.",
       "");
   }
-  
+
   function setRecorderCondition(condition) {
     recorderState.condition = condition || "Green";
     document.querySelectorAll(".condition-toggle").forEach((button) => {
@@ -2419,17 +2577,17 @@
     saveActiveRecorderState();
     updateRecorderUi();
   }
-  
+
   async function addRecorderNote() {
     const note = prompt("Recorder note", "");
     if (note === null) return;
-  
+
     const text = sanitizeTextInput(note);
     if (!text) {
       setRecorderMessage("Note was empty, so nothing was added.", "");
       return;
     }
-  
+
     setRecorderMessage("Locking note location...", "");
     const location = await getRecorderObservationLocation("note");
     recorderState.notes.push({
@@ -2446,7 +2604,7 @@
     saveActiveRecorderState();
     updateRecorderUi();
   }
-  
+
   async function captureRecorderPhotos() {
     const files = Array.from(field("recorderPhoto").files || []);
     if (!files.length) return;
@@ -2456,7 +2614,7 @@
       setRecorderMessage(validation.message, "error");
       return;
     }
-  
+
     setRecorderMessage("Locking photo location...", "");
     const location = await getRecorderObservationLocation("photo");
     files.forEach((file) => {
@@ -2478,11 +2636,11 @@
     saveActiveRecorderState();
     updateRecorderUi();
   }
-  
+
   function getLastRecorderObservationPoint() {
     const point = recorderState.points[recorderState.points.length - 1] || recorderStartPoint || null;
     if (!point) return null;
-  
+
     return {
       latitude: point.latitude,
       longitude: point.longitude,
@@ -2490,7 +2648,7 @@
       timestamp: point.timestamp || new Date().toISOString()
     };
   }
-  
+
   function getRecorderObservationLocation(label) {
     const fallbackPoint = getLastRecorderObservationPoint();
     if (!navigator.geolocation) {
@@ -2501,12 +2659,12 @@
         message: "GPS was unavailable; used the last accepted recorder location."
       });
     }
-  
+
     return new Promise((resolve) => {
       let bestPoint = null;
       let watchId = null;
       let resolved = false;
-  
+
       const finish = (result) => {
         if (resolved) return;
         resolved = true;
@@ -2516,7 +2674,7 @@
         }
         resolve(result);
       };
-  
+
       const timeoutId = window.setTimeout(() => {
         const usableBest = bestPoint && Number(bestPoint.accuracyMeters) <= RECORDER_OBSERVATION_MAX_ACCURACY_METERS;
         finish({
@@ -2528,24 +2686,24 @@
             : "Fresh GPS for this " + label + " was not accurate enough; used the last accepted recorder location."
         });
       }, RECORDER_OBSERVATION_FIX_TIMEOUT_MS);
-  
+
       try {
         watchId = navigator.geolocation.watchPosition(
           (position) => {
             const accuracy = Number(position.coords.accuracy);
             if (!Number.isFinite(accuracy)) return;
-  
+
             const point = {
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
               accuracyMeters: Math.round(accuracy),
               timestamp: new Date(position.timestamp || Date.now()).toISOString()
             };
-  
+
             if (!bestPoint || point.accuracyMeters < Number(bestPoint.accuracyMeters)) {
               bestPoint = point;
             }
-  
+
             if (point.accuracyMeters <= RECORDER_OBSERVATION_MAX_ACCURACY_METERS) {
               finish({
                 point: point,
@@ -2577,50 +2735,50 @@
       }
     });
   }
-  
+
   function locationMessageSuffix(location) {
     if (!location || !location.point) return "; no GPS location was available";
     const accuracyText = location.point.accuracyMeters ? " about " + location.point.accuracyMeters + " m accuracy" : "";
     if (location.source === "fresh_gps_fix") return " at a fresh GPS location" + accuracyText;
     return "; used last accepted recorder location" + accuracyText;
   }
-  
+
   function validatePhotoFiles(files) {
     if (!files || !files.length) return { ok: true };
-  
+
     if (files.length > MAX_PHOTO_COUNT) {
       return { ok: false, message: "Too many photos. Limit photos to " + MAX_PHOTO_COUNT + " per report." };
     }
-  
+
     const totalBytes = files.reduce((total, file) => total + file.size, 0);
     if (totalBytes > MAX_TOTAL_PHOTO_BYTES) {
       return { ok: false, message: "Photos are too large together. Limit total photo size to about " + Math.round(MAX_TOTAL_PHOTO_BYTES / 1024 / 1024) + " MB." };
     }
-  
+
     for (const file of files) {
       if (!isAllowedPhotoFile(file)) {
         return { ok: false, message: "Unsupported photo type: " + (file.type || file.name) + ". Use JPG, PNG, WebP, HEIC, or HEIF." };
       }
-  
+
       if (file.size > MAX_PHOTO_BYTES) {
         return { ok: false, message: "Photo is too large: " + file.name + ". Limit each photo to about " + Math.round(MAX_PHOTO_BYTES / 1024 / 1024) + " MB." };
       }
     }
-  
+
     return { ok: true };
   }
-  
+
   function isAllowedPhotoFile(file) {
     if (ALLOWED_PHOTO_TYPES.includes(file.type)) return true;
     return /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || "");
   }
-  
+
   function rebuildSegmentsFromPoints(points, routeId = recorderState.sessionId || "") {
     if (!points || points.length < 2) return [];
-  
+
     const segments = [];
     let active = null;
-  
+
     for (let i = 1; i < points.length; i++) {
       const previous = points[i - 1];
       const current = points[i];
@@ -2628,7 +2786,7 @@
       const legDistanceMeters = calculateDistanceMeters(previous, current);
       const hasGpsGap = isRecorderGapBreak(previous, current);
       const hasConditionChange = active && active.condition !== condition;
-  
+
       if (hasGpsGap) {
         if (active) {
           segments.push(finalizeRecorderSegment(active));
@@ -2640,7 +2798,7 @@
         });
         continue;
       }
-  
+
       if (hasConditionChange) {
         segments.push(finalizeRecorderSegment(active));
         active = null;
@@ -2650,7 +2808,7 @@
         });
         continue;
       }
-  
+
       if (!active) {
         active = createRecorderSegmentDraft(previous, current, legDistanceMeters, condition, routeId);
       } else {
@@ -2662,27 +2820,27 @@
         if (current.accuracyMeters !== "") active.accuracies.push(current.accuracyMeters);
       }
     }
-  
+
     if (active) segments.push(finalizeRecorderSegment(active));
     return segments;
   }
-  
+
   function buildRecorderSegments(points) {
     return rebuildSegmentsFromPoints(points);
   }
-  
+
   function isRecorderGapBreak(previousPoint, currentPoint) {
     return calculateDistanceMeters(previousPoint, currentPoint) > RECORDER_SEGMENT_GAP_METERS ||
       calculateTimeGapMs(previousPoint, currentPoint) > RECORDER_SEGMENT_GAP_MS;
   }
-  
+
   function calculateTimeGapMs(a, b) {
     const aTime = new Date(a.timestamp).getTime();
     const bTime = new Date(b.timestamp).getTime();
     if (!Number.isFinite(aTime) || !Number.isFinite(bTime)) return 0;
     return Math.abs(bTime - aTime);
   }
-  
+
   function createRecorderSegmentDraft(previous, current, legDistanceMeters, condition, routeId) {
     return {
       segmentId: makeId("RSG"),
@@ -2699,14 +2857,14 @@
       source: RECORDER_SOURCE
     };
   }
-  
+
   function finalizeRecorderSegment(segment) {
     const avgAccuracy = segment.accuracies.length
       ? Math.round(segment.accuracies.reduce((total, value) => total + Number(value), 0) / segment.accuracies.length)
       : "";
     const lengthMeters = Math.round(segment.lengthMeters * 10) / 10;
     const distanceFt = Math.round(lengthMeters * 3.28084);
-  
+
     return {
       segmentId: segment.segmentId,
       routeId: segment.routeId,
@@ -2731,11 +2889,11 @@
       notes: ""
     };
   }
-  
+
   function renderSegments() {
     if (!recorderMap) return;
     clearRecorderMapLayers();
-  
+
     recorderState.segments.forEach((segment) => {
       const latLngs = segment.coordinates.map((coordinate) => [coordinate[1], coordinate[0]]);
       const layer = L.polyline(latLngs, {
@@ -2747,20 +2905,20 @@
       recorderLayers.push({ segmentId: segment.segmentId, layer: layer });
     });
   }
-  
+
   function renderRecorderPaths() {
     renderSegments();
   }
-  
+
   function clearRecorderMapLayers() {
     recorderLayers.forEach((item) => item.layer.remove());
     recorderLayers = [];
   }
-  
+
   function renderRecorderReviewList() {
     const list = field("recorderReviewList");
     if (!list) return;
-  
+
     const reviewSegments = getFilteredReviewSegments();
     if (!reviewSegments.length) {
       list.replaceChildren();
@@ -2770,7 +2928,7 @@
       list.appendChild(empty);
       return;
     }
-  
+
     list.replaceChildren();
     reviewSegments.forEach((segment) => {
       const item = document.createElement("div");
@@ -2779,7 +2937,7 @@
       const strong = document.createElement("strong");
       strong.textContent = segment.conditionLabel + (segment.reviewed ? " - Reviewed" : "");
       title.appendChild(strong);
-  
+
       const detailGrid = document.createElement("div");
       detailGrid.className = "review-detail-grid";
       [
@@ -2791,7 +2949,7 @@
         ["End", formatRecorderDateTime(segment.endTime || segment.endTimestamp)],
         ["Notes", segment.notes || "--"]
       ].forEach(([label, value]) => detailGrid.appendChild(createReviewDetail(label, value)));
-  
+
       const actions = document.createElement("div");
       actions.className = "review-segment-actions";
       const zoomButton = createActionButton("Zoom To", "secondary", () => zoomToRecorderSegment(segment.segmentId));
@@ -2802,7 +2960,7 @@
       list.appendChild(item);
     });
   }
-  
+
   function getFilteredReviewSegments() {
     return recorderState.segments.filter((segment) => {
       if (recorderReviewFilter === "problem") return segment.condition === "Yellow" || segment.condition === "Red";
@@ -2810,7 +2968,7 @@
       return true;
     });
   }
-  
+
   function setRecorderReviewFilter(filter) {
     recorderReviewFilter = filter || "all";
     document.querySelectorAll("[data-review-filter]").forEach((button) => {
@@ -2818,7 +2976,7 @@
     });
     renderRecorderReviewList();
   }
-  
+
   function createReviewDetail(label, value) {
     const div = document.createElement("div");
     div.className = "review-detail";
@@ -2829,7 +2987,7 @@
     div.append(span, strong);
     return div;
   }
-  
+
   function createActionButton(text, className, onClick) {
     const button = document.createElement("button");
     if (className) button.className = className;
@@ -2838,42 +2996,42 @@
     button.addEventListener("click", onClick);
     return button;
   }
-  
+
   function formatRecorderDateTime(value) {
     if (!value) return "--";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return String(value);
     return date.toLocaleString();
   }
-  
+
   function zoomToRecorderSegment(segmentId) {
     const item = recorderLayers.find((layerItem) => layerItem.segmentId === segmentId);
     if (item && recorderMap) {
       recorderMap.fitBounds(item.layer.getBounds(), { padding: [24, 24], maxZoom: 21 });
     }
   }
-  
+
   function markRecorderSegmentReviewed(segmentId) {
     const segment = recorderState.segments.find((item) => item.segmentId === segmentId);
     if (!segment) return;
-  
+
     segment.reviewed = true;
     segment.reviewStatus = "Reviewed";
     persistRecorderSegmentReview(segmentId);
     renderRecorderReviewList();
     setRecorderMessage("Segment marked reviewed.", "ok");
   }
-  
+
   function persistRecorderSegmentReview(segmentId) {
     const routeId = recorderState.sessionId;
     if (!routeId) return;
-  
+
     const saved = getRecorderSessions().find((session) => session.routeId === routeId || session.sessionId === routeId);
     if (!saved) {
       saveActiveRecorderState();
       return;
     }
-  
+
     const generatedSegments = (saved.generatedSegments || saved.segments || []).map((segment) => {
       if (segment.segmentId !== segmentId) return segment;
       return Object.assign({}, segment, {
@@ -2883,27 +3041,27 @@
     });
     updateRecorderSession(saved.routeId, { generatedSegments: generatedSegments, segments: generatedSegments });
   }
-  
+
   function documentRecorderSegment(segmentId) {
     const segment = recorderState.segments.find((item) => item.segmentId === segmentId);
     if (!segment || !segment.coordinates.length) return;
-  
+
     if (recorderState.status === "recording" || recorderState.status === "paused") {
       setRecorderMessage("Stop the recording before creating a detailed report from a review segment.", "error");
       return;
     }
-  
+
     const midpoint = getCoordinateMidpoint(segment.coordinates);
     const severity = segment.condition === "Red" ? "3" : "2";
     const conditionText = segment.condition === "Red" ? "Red / Poor recorder segment" : "Yellow / Fair recorder segment";
-  
+
     field("recorderPanel").classList.remove("visible");
     field("surveyPanel").style.display = "";
     field("appShell").style.display = "grid";
     field("introScreen").style.display = "none";
     field("successPanel").style.display = "none";
     field("surveyForm").style.display = "";
-  
+
     resetFormAfterSubmit();
     field("reportType").value = "Point Issue";
     field("severity").value = severity;
@@ -2913,12 +3071,12 @@
       ". Segment length: " + (segment.lengthMeters || "--") + " m. Segment score: " + (segment.score || "--") +
       ". Start: " + (segment.startTime || segment.startTimestamp || "--") +
       ". End: " + (segment.endTime || segment.endTimestamp || "--") + ".";
-  
+
     updateReportTypeUI();
     setLocation(midpoint.lat, midpoint.lng, false, segment.averageAccuracy || segment.averageAccuracyMeters || null);
     locationConfirmed = true;
     updateLocationConfirmationStatus();
-  
+
     [
       "reportType", "condition", "severity"
     ].forEach(syncSegmentedControl);
@@ -2927,7 +3085,7 @@
     openSurveyStep("conditionSection");
     setMessage("Recorder segment midpoint loaded into the point inspection form. Add photos, measurements, and notes before submitting.", "ok");
   }
-  
+
   function updateRecorderUi() {
     const reviewCount = recorderState.segments.filter((segment) => segment.reviewNeeded === "Yes" && !segment.reviewed).length;
     const conditionEl = field("recorderCurrentCondition");
@@ -2951,13 +3109,13 @@
     field("stopRecordingButton").disabled = !(recorderState.status === "recording" || recorderState.status === "paused");
     field("improveRecorderGpsButton").disabled = recorderStartFixActive || recorderState.status === "recording" || recorderState.status === "paused";
   }
-  
+
   function recorderConditionStatusClass(condition) {
     if (condition === "Yellow") return "condition-fair";
     if (condition === "Red") return "condition-poor";
     return "condition-good";
   }
-  
+
   function recorderGpsQualityClass(accuracyMeters) {
     if (window.App && window.App.gpsRecorder && window.App.gpsRecorder.classifyAccuracy) {
       return window.App.gpsRecorder.classifyAccuracy(accuracyMeters);
@@ -2969,14 +3127,14 @@
     if (accuracy <= 15) return "fair";
     return "poor";
   }
-  
+
   function warnBeforeLeavingActiveRecorder(event) {
     if (recorderState.status !== "recording" && recorderState.status !== "paused") return;
     event.preventDefault();
     event.returnValue = "Recorder Mode is active. Stop recording before leaving so the session can be saved locally.";
     return event.returnValue;
   }
-  
+
   function saveRecorderContact() {
     const contact = {
       reporterName: sanitizeTextInput(field("recorderName").value),
@@ -2984,7 +3142,7 @@
     };
     localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(contact));
   }
-  
+
   function createRecorderSessionPayload(state) {
     const routeId = state.sessionId || makeId("REC");
     return {
@@ -2992,6 +3150,9 @@
       routeId: routeId,
       sessionId: routeId,
       routeName: state.routeName || "",
+      blockId: state.blockId || "",
+      blockName: state.blockName || "",
+      blockStatus: state.blockStatus || "",
       inspectorName: state.recorderName || "",
       recorderName: state.recorderName || "",
       email: state.email || "",
@@ -3005,7 +3166,7 @@
       lastAccuracy: state.lastAccuracy || ""
     };
   }
-  
+
   function saveActiveRecorderState() {
     if (recorderState.status !== "recording" && recorderState.status !== "paused") return;
     try {
@@ -3015,7 +3176,7 @@
       handleAppError("Active recorder session could not be saved.", error, setRecorderMessage);
     }
   }
-  
+
   function getActiveRecorderState() {
     try {
       return JSON.parse(localStorage.getItem(RECORDER_ACTIVE_STORAGE_KEY) || "null");
@@ -3024,15 +3185,15 @@
       return null;
     }
   }
-  
+
   function clearActiveRecorderState() {
     localStorage.removeItem(RECORDER_ACTIVE_STORAGE_KEY);
   }
-  
+
   function restoreActiveRecorderState() {
     const saved = normalizeRecorderSession(getActiveRecorderState());
     if (!saved || !saved.rawPoints.length) return false;
-  
+
     recorderState = createEmptyRecorderState();
     recorderState.sessionId = saved.sessionId || saved.routeId;
     recorderState.status = "paused";
@@ -3040,6 +3201,14 @@
     recorderState.startedAt = saved.startedAt;
     recorderState.endedAt = "";
     recorderState.routeName = saved.routeName || "";
+    recorderState.blockId = saved.blockId || "";
+    recorderState.blockName = saved.blockName || "";
+    recorderState.blockStatus = saved.blockStatus || "";
+    selectedRecorderBlock = recorderState.blockId ? {
+      blockId: recorderState.blockId,
+      blockName: recorderState.blockName,
+      status: recorderState.blockStatus
+    } : null;
     recorderState.recorderName = saved.inspectorName || saved.recorderName || "";
     recorderState.email = saved.email || "";
     recorderState.points = saved.rawPoints || [];
@@ -3051,13 +3220,14 @@
     field("recorderRouteName").value = recorderState.routeName;
     field("recorderName").value = recorderState.recorderName;
     field("recorderEmail").value = recorderState.email;
+    updateSelectedBlockUi();
     setRecorderCondition(recorderState.condition);
     renderSegments();
     renderRecorderReviewList();
     setRecorderMessage("Recovered an interrupted recording. It is paused so you can resume or stop and save it.", "ok");
     return true;
   }
-  
+
   function getRecorderSessions() {
     try {
       const stored = JSON.parse(localStorage.getItem(RECORDER_STORAGE_KEY) || "[]");
@@ -3068,7 +3238,7 @@
       return [];
     }
   }
-  
+
   function saveRecorderSession(session) {
     const sessions = getRecorderSessions();
     const normalized = normalizeRecorderSession(session);
@@ -3084,7 +3254,7 @@
     updateRecorderUi();
     return normalized;
   }
-  
+
   async function syncRecorderSession(session) {
     const uploadUrl = getUploadUrl();
     if (!session || !uploadUrl) {
@@ -3098,7 +3268,7 @@
       setRecorderMessage("Recording saved locally. Add the upload endpoint to sync recorder segments to ArcGIS automatically.", "ok");
       return false;
     }
-  
+
     if (!isValidUploadUrl(uploadUrl)) {
       updateRecorderSession(session.routeId, {
         syncStatus: "failed",
@@ -3108,7 +3278,7 @@
       setRecorderMessage("Recording saved locally, but recorder sync failed because the upload URL is invalid.", "error");
       return false;
     }
-  
+
     const payload = buildRecorderSyncPayload(session);
     if (!payload.generatedSegments.length) {
       updateRecorderSession(session.routeId, {
@@ -3119,7 +3289,7 @@
       setRecorderMessage("Recording saved locally. No recorder segments were available to sync.", "error");
       return false;
     }
-  
+
     try {
       await postJsonNoCors(uploadUrl, payload);
       updateRecorderSession(session.routeId, {
@@ -3139,13 +3309,16 @@
       return false;
     }
   }
-  
+
   function buildRecorderSyncPayload(session) {
     return {
       action: "recorderSession",
       routeId: session.routeId || session.sessionId || "",
       sessionId: session.sessionId || session.routeId || "",
       routeName: session.routeName || "",
+      blockId: session.blockId || "",
+      blockName: session.blockName || "",
+      blockStatus: session.blockStatus || "",
       inspectorName: session.inspectorName || session.recorderName || "",
       startedAt: session.startedAt || "",
       endedAt: session.endedAt || "",
@@ -3165,7 +3338,7 @@
       })) : []
     };
   }
-  
+
   function deleteRecorderSession(routeId) {
     if (!routeId) return false;
     const sessions = getRecorderSessions();
@@ -3174,13 +3347,13 @@
     updateRecorderUi();
     return remaining.length !== sessions.length;
   }
-  
+
   function updateRecorderSession(routeId, patch) {
     if (!routeId || !patch || typeof patch !== "object") return null;
     const sessions = getRecorderSessions();
     const index = sessions.findIndex((session) => session.routeId === routeId);
     if (index < 0) return null;
-  
+
     const updated = normalizeRecorderSession(Object.assign({}, sessions[index], patch));
     sessions[index] = updated;
     localStorage.setItem(RECORDER_STORAGE_KEY, JSON.stringify(sessions));
@@ -3188,7 +3361,7 @@
     updateRecorderUi();
     return updated;
   }
-  
+
   function getLocalStorageSizeBytes() {
     let total = 0;
     for (let i = 0; i < localStorage.length; i++) {
@@ -3197,17 +3370,17 @@
     }
     return total * 2;
   }
-  
+
   function warnIfLocalStorageLarge(messageFn) {
     const bytes = getLocalStorageSizeBytes();
     if (bytes <= MAX_LOCAL_STORAGE_WARN_BYTES) return;
     const mb = Math.round(bytes / 1024 / 1024 * 10) / 10;
     messageFn("Local browser storage is getting large (" + mb + " MB). Export and clear old saved sessions when possible.", "error");
   }
-  
+
   function normalizeRecorderSession(session) {
     if (!session || typeof session !== "object") return null;
-  
+
     const rawPoints = Array.isArray(session.rawPoints)
       ? session.rawPoints
       : Array.isArray(session.points)
@@ -3220,12 +3393,15 @@
         : [];
     const routeId = session.routeId || session.sessionId || makeId("REC");
     const inspectorName = session.inspectorName || session.recorderName || "";
-  
+
     return {
       storageVersion: RECORDER_STORAGE_VERSION,
       routeId: routeId,
       sessionId: session.sessionId || routeId,
       routeName: session.routeName || "",
+      blockId: session.blockId || "",
+      blockName: session.blockName || "",
+      blockStatus: session.blockStatus || "",
       inspectorName: inspectorName,
       recorderName: inspectorName,
       email: session.email || "",
@@ -3244,46 +3420,46 @@
       lastSyncAttemptAt: session.lastSyncAttemptAt || ""
     };
   }
-  
+
   function clearRecorderSessions() {
     if (recorderState.status === "recording" || recorderState.status === "paused") {
       setRecorderMessage("Stop the active recording before clearing local recorder data.", "error");
       return;
     }
-  
+
     getRecorderSessions().forEach((session) => deleteRecorderSession(session.routeId));
     localStorage.setItem(RECORDER_STORAGE_KEY, JSON.stringify([]));
     setRecorderMessage("Local recorder sessions cleared.", "ok");
     updateRecorderUi();
   }
-  
+
   function exportCurrentRecorderGeoJson() {
     const currentSession = getCurrentRecorderExportSession();
     if (!currentSession) {
       setRecorderMessage("No current recorder session is available to export.", "error");
       return;
     }
-  
+
     exportRecorderGeoJsonSessions([currentSession]);
   }
-  
+
   function exportAllRecorderGeoJson() {
     const sessions = getRecorderSessions();
     const currentSession = getCurrentRecorderExportSession();
     const allSessions = sessions.length ? sessions : currentSession ? [currentSession] : [];
-  
+
     if (!allSessions.length) {
       setRecorderMessage("No saved recorder sessions are available to export.", "error");
       return;
     }
-  
+
     exportRecorderGeoJsonSessions(allSessions);
   }
-  
+
   function downloadRecorderGeoJson() {
     exportAllRecorderGeoJson();
   }
-  
+
   function getCurrentRecorderExportSession() {
     if (!recorderState.points.length) return null;
     const state = Object.assign({}, recorderState, {
@@ -3292,7 +3468,7 @@
     if (!state.segments.length) return null;
     return normalizeRecorderSession(createRecorderSessionPayload(state));
   }
-  
+
   function exportRecorderGeoJsonSessions(sessions) {
     try {
       const geojson = buildGeoJsonFromSessions(sessions);
@@ -3308,7 +3484,7 @@
       handleAppError("GeoJSON export failed.", error, setRecorderMessage);
     }
   }
-  
+
   function buildGeoJsonFromSessions(sessions) {
     const features = [];
     const includePersonalInfo = Boolean(field("includePersonalInfoInGeoJson") && field("includePersonalInfoInGeoJson").checked);
@@ -3339,23 +3515,23 @@
         });
       });
     });
-  
+
     return {
       type: "FeatureCollection",
       name: "sidewalk_recorder_segments",
       features: features
     };
   }
-  
+
   function validateGeoJson(geojson) {
     if (!geojson || geojson.type !== "FeatureCollection" || !Array.isArray(geojson.features)) {
       return { ok: false, error: "Output is not a valid FeatureCollection." };
     }
-  
+
     if (!geojson.features.length) {
       return { ok: false, error: "There are no valid segments to export." };
     }
-  
+
     for (let i = 0; i < geojson.features.length; i++) {
       const feature = geojson.features[i];
       if (!feature || feature.type !== "Feature") {
@@ -3375,13 +3551,13 @@
         }
       }
     }
-  
+
     return { ok: true };
   }
-  
+
   function downloadGeoJson(geojson) {
     const filename = "sidewalk-segments-" + new Date().toISOString().slice(0, 10) + ".geojson";
-  
+
     try {
       const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: "application/geo+json;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -3396,13 +3572,13 @@
       throw new Error("Export download failed. " + getErrorMessage(error));
     }
   }
-  
+
   function buildRecorderSegmentNotes(session, segment) {
     const segmentNotes = [segment.notes || ""].filter(Boolean);
     const recorderNotes = (session.notes || []).map((note) => note.text).filter(Boolean);
     return segmentNotes.concat(recorderNotes).join("; ");
   }
-  
+
   function recorderPriorityClass(condition) {
     return {
       Green: "Low",
@@ -3410,13 +3586,13 @@
       Red: "High"
     }[condition] || "Low";
   }
-  
+
   function setRecorderMessage(text, type) {
     const message = field("recorderMessage");
     message.textContent = text;
     message.className = "message" + (type ? " " + type : "");
   }
-  
+
   function recorderStatusLabel(status) {
     return {
       idle: "Ready",
@@ -3425,7 +3601,7 @@
       stopped: "Saved Locally"
     }[status] || "Ready";
   }
-  
+
   function recorderConditionColor(condition) {
     return {
       Green: "#16803c",
@@ -3433,7 +3609,7 @@
       Red: "#b42318"
     }[condition] || "#16803c";
   }
-  
+
   function recorderConditionClass(condition) {
     return {
       Green: "Good",
@@ -3441,7 +3617,7 @@
       Red: "Poor"
     }[condition] || "Good";
   }
-  
+
   function recorderConditionScore(condition) {
     return {
       Green: 100,
@@ -3449,7 +3625,7 @@
       Red: 35
     }[condition] || 100;
   }
-  
+
   function recorderConditionLabel(condition) {
     return {
       Green: "Green / Good",
@@ -3457,28 +3633,28 @@
       Red: "Red / Poor"
     }[condition] || "Green / Good";
   }
-  
+
   function getCoordinateMidpoint(coordinates) {
     if (!coordinates || !coordinates.length) {
       return { lat: DEFAULT_LOCATION.lat, lng: DEFAULT_LOCATION.lng };
     }
-  
+
     const middle = coordinates[Math.floor(coordinates.length / 2)];
     return { lat: middle[1], lng: middle[0] };
   }
-  
+
   function makeId(prefix) {
     const suffix = window.crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.round(Math.random() * 100000);
     return prefix + "-" + suffix;
   }
-  
+
   function downloadCsv() {
     const reports = getReports();
     if (!reports.length) {
       setMessage("No saved reports are available to download.", "error");
       return;
     }
-  
+
     const columns = [
       "reportId", "submittedAt", "reporterName", "email", "reportType", "latitude", "longitude",
       "locationAccuracy", "locationConfirmed", "gpsLocked", "address", "condition", "severity",
@@ -3488,11 +3664,11 @@
       "comments", "photoName", "photoType", "photoCaptions", "photoCount", "score", "conditionClass",
       "priorityScore", "priorityClass"
     ];
-  
+
     const rows = [columns.join(",")].concat(reports.map((report) => {
       return columns.map((column) => csvValue(report[column])).join(",");
     }));
-  
+
     const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -3503,7 +3679,7 @@
     link.remove();
     URL.revokeObjectURL(url);
   }
-  
+
   function csvValue(value) {
     const text = String(value || "");
     return "\"" + text.replace(/"/g, "\"\"") + "\"";

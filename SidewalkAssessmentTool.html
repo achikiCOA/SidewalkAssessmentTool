@@ -814,6 +814,43 @@
       box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.14);
     }
 
+    .recorder-block-panel {
+      display: grid;
+      gap: 8px;
+      margin: 12px 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .recorder-block-panel strong {
+      display: block;
+      font-size: 1.05rem;
+    }
+
+    .block-status-pill {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      min-height: 28px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      color: #374151;
+      background: #e5e7eb;
+      font-weight: 800;
+    }
+
+    .block-status-pill.in-progress {
+      color: #713f12;
+      background: #fef3c7;
+    }
+
+    .block-status-pill.complete {
+      color: #14532d;
+      background: #dcfce7;
+    }
+
     .condition-toggle-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -1604,6 +1641,8 @@
         </p>
         <label for="uploadUrl">Upload Endpoint URL</label>
         <input id="uploadUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+        <label for="blockLayerUrl">ArcGIS Blocks Layer URL</label>
+        <input id="blockLayerUrl" type="url" placeholder="https://services.../FeatureServer/0">
         <button type="button" id="saveSettingsButton">Save Upload Settings</button>
       </details>
     </section>
@@ -1628,6 +1667,17 @@
           <div class="full">
             <label for="recorderRouteName">Route / Block Name</label>
             <input id="recorderRouteName" type="text" placeholder="Optional, for example Main St north side">
+          </div>
+        </div>
+
+        <div class="recorder-block-panel">
+          <strong>Assigned Block</strong>
+          <span id="selectedBlockLabel">No block selected</span>
+          <span class="block-status-pill" id="selectedBlockStatus">--</span>
+          <div class="recorder-control-grid">
+            <button class="secondary" type="button" id="loadBlocksButton">Load Blocks</button>
+            <button class="secondary" type="button" id="clearSelectedBlockButton">Clear Block</button>
+            <button class="secondary" type="button" id="zoomSelectedBlockButton">Zoom Block</button>
           </div>
         </div>
 

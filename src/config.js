@@ -11,6 +11,7 @@
   App.config = Object.freeze({
     defaultLocation: { lat: 39.3292, lng: -82.1013 },
     uploadUrlKey: "sidewalkAssessmentUploadUrl",
+    blockLayerUrlKey: "sidewalkAssessmentBlockLayerUrl",
     storageKeys: Object.freeze({
       reports: "sidewalkAssessmentReports",
       recorderSessions: "sidewalkRecorderSessions",
