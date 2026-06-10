@@ -1193,6 +1193,7 @@
     <section class="panel" id="surveyPanel" aria-labelledby="surveyTitle">
       <div class="panel-header">
         <h2 id="surveyTitle">Survey</h2>
+        <button class="secondary" type="button" id="backToIntroFromSurvey">Back</button>
       </div>
 
       <div class="message" id="formMessage">Start with location, then move through photos, condition, context, measurements, contact, and submit.</div>
@@ -1634,10 +1635,10 @@
       </form>
 
       <details class="upload-settings" id="uploadSettings" open>
-        <summary>Spreadsheet upload</summary>
+        <summary>Upload and map settings</summary>
         <p class="help">
-          Paste a Google Apps Script Web App URL or Power Automate HTTP URL that accepts report submissions.
-          Reports are still saved in this browser and can be exported as CSV if the upload URL is blank or offline.
+          Paste a Google Apps Script Web App URL for submissions and an optional ArcGIS blocks layer URL for assigned/completed block lines.
+          Reports are still saved in this browser if upload is blank or offline.
         </p>
         <label for="uploadUrl">Upload Endpoint URL</label>
         <input id="uploadUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec">
@@ -1672,6 +1673,7 @@
 
         <div class="recorder-block-panel">
           <strong>Assigned Block</strong>
+          <p class="help">Tap Load Blocks to show assigned/completed block lines on the map, then tap the block line you are about to inspect before starting the recorder.</p>
           <span id="selectedBlockLabel">No block selected</span>
           <span class="block-status-pill" id="selectedBlockStatus">--</span>
           <div class="recorder-control-grid">

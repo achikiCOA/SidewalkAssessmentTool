@@ -995,6 +995,7 @@
     field("startNearbyReportButton").addEventListener("click", startNearbyReport);
     field("startAssessmentButton").addEventListener("click", startAssessment);
     field("startRecorderButton").addEventListener("click", startRecorderMode);
+    field("backToIntroFromSurvey").addEventListener("click", backToIntroFromSurvey);
     field("backToIntroFromRecorder").addEventListener("click", backToIntroFromRecorder);
     field("improveRecorderGpsButton").addEventListener("click", improveRecorderGpsStart);
     field("startRecordingButton").addEventListener("click", handleStartPauseRecording);
@@ -1564,6 +1565,14 @@
     }
   }
 
+  function backToIntroFromSurvey() {
+    field("recorderPanel").classList.remove("visible");
+    field("surveyPanel").style.display = "";
+    field("appShell").style.display = "none";
+    field("introScreen").style.display = "";
+    setMessage("Start with location, then move through photos, condition, context, measurements, contact, and submit.", "");
+  }
+
   function saveContactInfo() {
     const contact = {
       reporterName: sanitizeTextInput(field("reporterName").value),
@@ -2049,7 +2058,14 @@
 
   async function loadRecorderBlocks() {
     const blockLayerUrl = getBlockLayerUrl();
-    if (!blockLayerUrl || !recorderMap) return;
+    if (!blockLayerUrl) {
+      setRecorderMessage("No block layer URL is saved yet. Open Upload and map settings, paste the ArcGIS Blocks Layer URL, save settings, then tap Load Blocks again.", "error");
+      return;
+    }
+    if (!recorderMap) {
+      setRecorderMessage("Recorder map is not ready yet. Reopen Recorder Mode and try Load Blocks again.", "error");
+      return;
+    }
 
     try {
       clearRecorderBlockLayers();
