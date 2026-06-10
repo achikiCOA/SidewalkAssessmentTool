@@ -3,7 +3,25 @@ const PHOTO_STATUS_COLUMN = 28;
 const ARCGIS_STATUS_COLUMN = 29;
 const ARCGIS_OBJECT_ID_COLUMN = 30;
 const ARCGIS_ERROR_COLUMN = 31;
-const BACKEND_VERSION = "2026-06-02-field-ux-v1";
+const BACKEND_VERSION = "2026-06-10-recorder-sync-cleanup-v1";
+const RECORDER_SYNC_LOG_SHEET_NAME = "Recorder Sync Log";
+const RECORDER_REQUIRED_FIELDS = [
+  "segmentId",
+  "routeId",
+  "condition",
+  "conditionClass",
+  "score",
+  "priorityClass",
+  "lengthMeters",
+  "averageAccuracy",
+  "startTime",
+  "endTime",
+  "pointCount",
+  "source",
+  "reviewed",
+  "notes",
+  "photoCount"
+];
 const DEBUG = false;
 const REQUIRED_HEADERS = [
   "reportId",
@@ -223,12 +241,20 @@ function handlePhotoUpload(data) {
 function handleRecorderSessionUpload(data) {
   const segments = Array.isArray(data.generatedSegments) ? data.generatedSegments : [];
   if (!segments.length) {
+    logRecorderSync(data, {
+      added: 0,
+      updated: 0,
+      failed: 0,
+      errors: [{ segmentId: "", error: "No recorder segments were provided." }]
+    });
+
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, action: "recorderSession", error: "No recorder segments were provided." }))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
   const result = syncRecorderSegmentsToArcGIS(data, segments);
+  logRecorderSync(data, result);
 
   return ContentService
     .createTextOutput(JSON.stringify({
@@ -255,6 +281,21 @@ function authorizeArcGIS() {
   return ContentService
     .createTextOutput(JSON.stringify({ ok: true, hasToken: Boolean(token) }))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function validateArcGISRecorderLayer() {
+  const layerUrl = getRecorderSegmentLayerUrl();
+  const fieldMap = getArcGISFieldNameMap(layerUrl);
+  const missing = RECORDER_REQUIRED_FIELDS.filter((fieldName) => !fieldMap[canonicalHeader(fieldName)]);
+
+  return {
+    ok: missing.length === 0,
+    layerUrl: layerUrl,
+    missingFields: missing,
+    message: missing.length
+      ? "Recorder layer is missing recommended fields: " + missing.join(", ")
+      : "Recorder layer has the recommended fields."
+  };
 }
 
 function retryArcGISSync(reportId) {
@@ -465,6 +506,41 @@ function buildRecorderNotesForSegment(session, segment) {
     .filter(Boolean);
 
   return segmentNotes.concat(recorderNotes).join("; ");
+}
+
+function logRecorderSync(session, result) {
+  try {
+    const ss = SpreadsheetApp.openById(getRequiredProperty("SPREADSHEET_ID"));
+    const sheet = ss.getSheetByName(RECORDER_SYNC_LOG_SHEET_NAME) || ss.insertSheet(RECORDER_SYNC_LOG_SHEET_NAME);
+    const headers = [
+      "loggedAt",
+      "routeId",
+      "sessionId",
+      "routeName",
+      "segmentCount",
+      "added",
+      "updated",
+      "failed",
+      "errors",
+      "backendVersion"
+    ];
+
+    ensureSheetHeaders(sheet, headers);
+    appendObjectRow(sheet, {
+      loggedAt: new Date().toISOString(),
+      routeId: session.routeId || session.sessionId || "",
+      sessionId: session.sessionId || session.routeId || "",
+      routeName: session.routeName || "",
+      segmentCount: Array.isArray(session.generatedSegments) ? session.generatedSegments.length : 0,
+      added: result.added || 0,
+      updated: result.updated || 0,
+      failed: result.failed || 0,
+      errors: result.errors && result.errors.length ? JSON.stringify(result.errors) : "",
+      backendVersion: BACKEND_VERSION
+    });
+  } catch (err) {
+    console.error("Recorder sync logging failed: " + (err.stack || err.message));
+  }
 }
 
 function addArcGISFeatureToLayer(layerUrl, feature) {
@@ -838,7 +914,14 @@ function canonicalHeader(header) {
     photostatus: "photoStatus",
     arcgisstatus: "arcgisStatus",
     arcgisobjectid: "arcgisObjectId",
-    arcgiserror: "arcgisError"
+    arcgiserror: "arcgisError",
+    loggedat: "loggedAt",
+    segmentcount: "segmentCount",
+    added: "added",
+    updated: "updated",
+    failed: "failed",
+    errors: "errors",
+    backendversion: "backendVersion"
   };
 
   return aliases[normalized] || normalized;

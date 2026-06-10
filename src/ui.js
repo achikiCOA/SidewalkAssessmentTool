@@ -3,7 +3,7 @@
 
   const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
   const DEFAULT_UPLOAD_URL = "";
-  const APP_VERSION = "2026-06-09-field-mobile-v1";
+  const APP_VERSION = "2026-06-10-recorder-sync-cleanup-v1";
   const STORAGE_KEY = "sidewalkAssessmentReports";
   const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
   const RECORDER_ACTIVE_STORAGE_KEY = "sidewalkRecorderActiveSession";
@@ -812,8 +812,10 @@
     if (!help) return;
   
     const conditions = getSelectedConditions();
+    help.replaceChildren();
+
     if (!conditions.length) {
-      help.innerHTML = "<p>Select a preset or choose all issue types that apply.</p>";
+      appendConditionHelpParagraph(help, "Select a preset or choose all issue types that apply.");
       return;
     }
   
@@ -828,9 +830,15 @@
       Other: "Other: describe the issue clearly in comments and attach at least one context photo."
     };
   
-    help.innerHTML = conditions.map((condition) => {
-      return "<p>" + escapeHtml(guidance[condition] || condition) + "</p>";
-    }).join("");
+    conditions.forEach((condition) => {
+      appendConditionHelpParagraph(help, guidance[condition] || condition);
+    });
+  }
+
+  function appendConditionHelpParagraph(container, text) {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = text;
+    container.appendChild(paragraph);
   }
   
   function enhanceConditionControl() {
@@ -1224,7 +1232,7 @@
       ["GIS Score", report.score + " / 100 - " + report.conditionClass, "conditionSection"]
     ];
   
-    review.innerHTML = "";
+    review.replaceChildren();
     reviewItems.forEach(([label, value, sectionId]) => {
       const div = document.createElement("div");
       div.className = "review-item";
@@ -1638,7 +1646,7 @@
   
     photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
     photoPreviewUrls = [];
-    previewGrid.innerHTML = "";
+    previewGrid.replaceChildren();
   
     const validation = validatePhotoFiles(photos);
     if (!validation.ok) {
@@ -2309,6 +2317,10 @@
   }
   
   function calculateDistanceMeters(a, b) {
+    if (window.App && window.App.gpsRecorder && window.App.gpsRecorder.calculateDistanceMeters) {
+      return window.App.gpsRecorder.calculateDistanceMeters(a, b);
+    }
+
     if (!a || !b) return 0;
     const aLat = Number(a.latitude ?? a.lat);
     const aLng = Number(a.longitude ?? a.lng);
@@ -2947,6 +2959,10 @@
   }
   
   function recorderGpsQualityClass(accuracyMeters) {
+    if (window.App && window.App.gpsRecorder && window.App.gpsRecorder.classifyAccuracy) {
+      return window.App.gpsRecorder.classifyAccuracy(accuracyMeters);
+    }
+
     const accuracy = Number(accuracyMeters);
     if (!Number.isFinite(accuracy)) return "";
     if (accuracy <= 5) return "good";
