@@ -88,6 +88,10 @@ function doPost(e) {
       return handlePhotoUpload(data);
     }
 
+    if (data.action === "recorderSession") {
+      return handleRecorderSessionUpload(data);
+    }
+
     return handleReportUpload(data);
   } catch (err) {
     console.error(err.stack || err.message);
@@ -216,6 +220,29 @@ function handlePhotoUpload(data) {
   }
 }
 
+function handleRecorderSessionUpload(data) {
+  const segments = Array.isArray(data.generatedSegments) ? data.generatedSegments : [];
+  if (!segments.length) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, action: "recorderSession", error: "No recorder segments were provided." }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const result = syncRecorderSegmentsToArcGIS(data, segments);
+
+  return ContentService
+    .createTextOutput(JSON.stringify({
+      ok: true,
+      action: "recorderSession",
+      routeId: data.routeId || data.sessionId || "",
+      added: result.added,
+      updated: result.updated,
+      failed: result.failed,
+      errors: result.errors
+    }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 function authorizeDrive() {
   const folder = DriveApp.getFolderById(getRequiredProperty("PHOTO_FOLDER_ID"));
   const blob = Utilities.newBlob("authorization test", "text/plain", "authorization-test.txt");
@@ -330,6 +357,140 @@ function addArcGISSegmentFeature(data, photoUrl) {
   return result.addResults[0];
 }
 
+function syncRecorderSegmentsToArcGIS(session, segments) {
+  const layerUrl = getRecorderSegmentLayerUrl();
+  const result = {
+    added: 0,
+    updated: 0,
+    failed: 0,
+    errors: []
+  };
+
+  segments.forEach((segment) => {
+    try {
+      const feature = buildRecorderArcGISFeature(session, segment, layerUrl);
+      const existing = findArcGISObjectByField("segmentId", segment.segmentId, layerUrl);
+
+      if (existing) {
+        feature.attributes[existing.objectIdFieldName] = existing.objectId;
+        updateArcGISFeature(layerUrl, feature);
+        result.updated += 1;
+      } else {
+        addArcGISFeatureToLayer(layerUrl, feature);
+        result.added += 1;
+      }
+    } catch (err) {
+      result.failed += 1;
+      result.errors.push({
+        segmentId: segment && segment.segmentId ? segment.segmentId : "",
+        error: err.message
+      });
+      console.error("Recorder ArcGIS segment sync failed: " + (err.stack || err.message));
+    }
+  });
+
+  return result;
+}
+
+function getRecorderSegmentLayerUrl() {
+  return getOptionalProperty("ARCGIS_RECORDER_SEGMENT_LAYER_URL") ||
+    getRequiredProperty("ARCGIS_SEGMENT_LAYER_URL");
+}
+
+function buildRecorderArcGISFeature(session, segment, layerUrl) {
+  const coordinates = Array.isArray(segment.coordinates) ? segment.coordinates : [];
+  if (coordinates.length < 2) {
+    throw new Error("Recorder segment must contain at least two coordinates.");
+  }
+
+  const path = coordinates.map((coordinate) => {
+    if (!Array.isArray(coordinate) || coordinate.length < 2) {
+      throw new Error("Recorder segment has an invalid coordinate.");
+    }
+
+    const lng = Number(coordinate[0]);
+    const lat = Number(coordinate[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      throw new Error("Recorder segment has a non-numeric coordinate.");
+    }
+
+    return [lng, lat];
+  });
+
+  const attributes = buildRecorderArcGISAttributes(session, segment, layerUrl);
+
+  return {
+    attributes: attributes,
+    geometry: {
+      paths: [path],
+      spatialReference: { wkid: 4326 }
+    }
+  };
+}
+
+function buildRecorderArcGISAttributes(session, segment, layerUrl) {
+  const attributes = {
+    segmentId: textValue(segment.segmentId),
+    routeId: textValue(segment.routeId || session.routeId || session.sessionId),
+    sessionId: textValue(session.sessionId || session.routeId),
+    routeName: textValue(session.routeName),
+    inspectorName: textValue(session.inspectorName || session.recorderName),
+    condition: textValue(segment.condition),
+    conditionClass: textValue(segment.conditionClass),
+    score: intValue(segment.score),
+    priorityClass: textValue(segment.priorityClass || recorderPriorityClass(segment.condition)),
+    lengthMeters: numberValue(segment.lengthMeters),
+    averageAccuracy: numberValue(segment.averageAccuracy || segment.averageAccuracyMeters),
+    startTime: textValue(segment.startTime || segment.startTimestamp),
+    endTime: textValue(segment.endTime || segment.endTimestamp),
+    pointCount: intValue(segment.pointCount),
+    source: textValue(segment.source || "continuous_recorder"),
+    reviewed: Boolean(segment.reviewed) ? "true" : "false",
+    notes: textValue(buildRecorderNotesForSegment(session, segment)),
+    photoCount: Array.isArray(session.photos) ? session.photos.length : 0
+  };
+
+  return filterArcGISAttributes(attributes, layerUrl);
+}
+
+function buildRecorderNotesForSegment(session, segment) {
+  const segmentNotes = [segment.notes || ""].filter(Boolean);
+  const recorderNotes = (Array.isArray(session.notes) ? session.notes : [])
+    .map((note) => {
+      const location = note.latitude && note.longitude
+        ? " (" + note.latitude + ", " + note.longitude + ")"
+        : "";
+      return textValue(note.text) + location;
+    })
+    .filter(Boolean);
+
+  return segmentNotes.concat(recorderNotes).join("; ");
+}
+
+function addArcGISFeatureToLayer(layerUrl, feature) {
+  const response = arcGISPost(layerUrl + "/addFeatures", {
+    features: JSON.stringify([feature])
+  });
+
+  if (!response.addResults || !response.addResults[0] || !response.addResults[0].success) {
+    throw new Error("ArcGIS addFeatures failed: " + JSON.stringify(response));
+  }
+
+  return response.addResults[0];
+}
+
+function updateArcGISFeature(layerUrl, feature) {
+  const response = arcGISPost(layerUrl + "/updateFeatures", {
+    features: JSON.stringify([feature])
+  });
+
+  if (!response.updateResults || !response.updateResults[0] || !response.updateResults[0].success) {
+    throw new Error("ArcGIS updateFeatures failed: " + JSON.stringify(response));
+  }
+
+  return response.updateResults[0];
+}
+
 function updateArcGISPhotoUrl(reportId, photoUrl) {
   if (!reportId || !photoUrl) return null;
 
@@ -380,6 +541,34 @@ function findArcGISObjectInLayer(reportId, layerUrl) {
     objectIdFieldName: result.objectIdFieldName || "OBJECTID",
     layerUrl: layerUrl
   };
+}
+
+function findArcGISObjectByField(fieldName, value, layerUrl) {
+  if (!layerUrl || !value) return null;
+
+  const actualFieldName = getArcGISActualFieldName(fieldName, layerUrl);
+  if (!actualFieldName) return null;
+
+  const safeValue = String(value).replace(/'/g, "''");
+  const result = arcGISPost(layerUrl + "/query", {
+    where: actualFieldName + "='" + safeValue + "'",
+    returnIdsOnly: "true"
+  });
+
+  if (!result.objectIds || !result.objectIds.length) return null;
+
+  return {
+    objectId: result.objectIds[result.objectIds.length - 1],
+    objectIdFieldName: result.objectIdFieldName || "OBJECTID",
+    layerUrl: layerUrl
+  };
+}
+
+function recorderPriorityClass(condition) {
+  const value = textValue(condition);
+  if (value === "Red") return "High";
+  if (value === "Yellow") return "Medium";
+  return "Low";
 }
 
 function filterArcGISAttributes(attributes, layerUrl) {
@@ -609,8 +798,13 @@ function canonicalHeader(header) {
 
   const aliases = {
     reportid: "reportId",
+    routeid: "routeId",
+    sessionid: "sessionId",
+    segmentid: "segmentId",
+    routename: "routeName",
     submittedat: "submittedAt",
     reportername: "reporterName",
+    inspectorname: "inspectorName",
     reporttype: "reportType",
     locationaccuracy: "locationAccuracy",
     locationconfirmed: "locationConfirmed",
@@ -637,6 +831,10 @@ function canonicalHeader(header) {
     conditionclass: "conditionClass",
     priorityscore: "priorityScore",
     priorityclass: "priorityClass",
+    averagelocationaccuracy: "averageAccuracy",
+    averageaccuracy: "averageAccuracy",
+    pointcount: "pointCount",
+    photocount: "photoCount",
     photostatus: "photoStatus",
     arcgisstatus: "arcgisStatus",
     arcgisobjectid: "arcgisObjectId",

@@ -1,0 +1,87 @@
+{
+  "type": "FeatureCollection",
+  "name": "sidewalk-segments-example",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-82.1013, 39.3292],
+          [-82.10118, 39.32926],
+          [-82.10106, 39.32932]
+        ]
+      },
+      "properties": {
+        "segmentId": "SEG-EXAMPLE-001",
+        "routeId": "REC-EXAMPLE-2026-06-09",
+        "condition": "Green",
+        "conditionClass": "Good",
+        "score": 100,
+        "priorityClass": "Low",
+        "lengthMeters": 24.3,
+        "averageAccuracy": 4.8,
+        "startTime": "2026-06-09T13:00:00.000Z",
+        "endTime": "2026-06-09T13:01:10.000Z",
+        "inspectorName": "",
+        "notes": "",
+        "reviewed": false,
+        "source": "continuous_recorder"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-82.10106, 39.32932],
+          [-82.10094, 39.32939],
+          [-82.10082, 39.32945]
+        ]
+      },
+      "properties": {
+        "segmentId": "SEG-EXAMPLE-002",
+        "routeId": "REC-EXAMPLE-2026-06-09",
+        "condition": "Yellow",
+        "conditionClass": "Fair",
+        "score": 70,
+        "priorityClass": "Medium",
+        "lengthMeters": 25.1,
+        "averageAccuracy": 6.2,
+        "startTime": "2026-06-09T13:01:10.000Z",
+        "endTime": "2026-06-09T13:02:05.000Z",
+        "inspectorName": "",
+        "notes": "Minor heaving along the block face.",
+        "reviewed": false,
+        "source": "continuous_recorder"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-82.10082, 39.32945],
+          [-82.1007, 39.32951],
+          [-82.10058, 39.32957]
+        ]
+      },
+      "properties": {
+        "segmentId": "SEG-EXAMPLE-003",
+        "routeId": "REC-EXAMPLE-2026-06-09",
+        "condition": "Red",
+        "conditionClass": "Poor",
+        "score": 35,
+        "priorityClass": "High",
+        "lengthMeters": 24.8,
+        "averageAccuracy": 8.4,
+        "startTime": "2026-06-09T13:02:05.000Z",
+        "endTime": "2026-06-09T13:03:00.000Z",
+        "inspectorName": "",
+        "notes": "Severe cracking and reduced passable width.",
+        "reviewed": false,
+        "source": "continuous_recorder"
+      }
+    }
+  ]
+}
