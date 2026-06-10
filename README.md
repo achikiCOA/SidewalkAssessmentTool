@@ -122,7 +122,7 @@ Use [docs/manual-qa-checklist.md](docs/manual-qa-checklist.md) before public dep
 Validate JavaScript syntax from the HTML entry points:
 
 ```powershell
-node -e "const fs=require('fs'); for (const file of ['src/config.js','src/map.js','src/gpsRecorder.js','src/scoring.js','src/storage.js','src/exportGeoJson.js','src/sync.js','src/photo.js','src/ui.js']) { new Function(fs.readFileSync(file,'utf8')); console.log(file + ' syntax ok'); }"
+node -e "const fs=require('fs'); for (const file of ['src/config.js','src/map.js','src/gpsRecorder.js','src/scoring.js','src/storage.js','src/exportGeoJson.js','src/sync.js','src/recorderBlocks.js','src/recorderSync.js','src/photo.js','src/ui.js']) { new Function(fs.readFileSync(file,'utf8')); console.log(file + ' syntax ok'); }"
 ```
 
 Check for whitespace problems before committing:

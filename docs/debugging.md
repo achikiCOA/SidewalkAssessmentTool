@@ -2,7 +2,7 @@
 
 ## Turning On Debug Logs
 
-The frontend has a `DEBUG` constant in `index.html`.
+The frontend has a `DEBUG` constant in `src/ui.js`.
 
 ```js
 const DEBUG = false;

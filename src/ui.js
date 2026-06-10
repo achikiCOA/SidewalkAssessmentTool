@@ -1936,7 +1936,7 @@
   function updateUploadStatus() {
     const hasUrl = Boolean(getUploadUrl());
     const uploadText = hasUrl ? "Spreadsheet upload configured" : "Spreadsheet upload not configured";
-    field("uploadStatus").textContent = uploadText + " · " + APP_VERSION;
+    field("uploadStatus").textContent = uploadText + " - " + APP_VERSION;
   }
 
   function updateSettingsVisibility() {
@@ -2059,7 +2059,7 @@
   async function loadRecorderBlocks() {
     const blockLayerUrl = getBlockLayerUrl();
     if (!blockLayerUrl) {
-      setRecorderMessage("No block layer URL is saved yet. Open Upload and map settings, paste the ArcGIS Blocks Layer URL, save settings, then tap Load Blocks again.", "error");
+      setRecorderMessage("Assigned blocks are optional. To use them, open Upload and map settings, paste the ArcGIS Blocks Layer URL, save settings, then tap Load Blocks again.", "");
       return;
     }
     if (!recorderMap) {
@@ -2098,7 +2098,7 @@
     return {
       blockId: textFromAttributes(attributes, ["blockId", "blockid", "BLOCKID"]),
       blockName: textFromAttributes(attributes, ["blockName", "blockname", "BLOCKNAME"]),
-      status: textFromAttributes(attributes, ["status", "STATUS"]) || "Not Started",
+      status: normalizeBlockStatus(textFromAttributes(attributes, ["status", "STATUS"])),
       assignedTo: textFromAttributes(attributes, ["assignedTo", "assignedto", "ASSIGNEDTO"]),
       priority: textFromAttributes(attributes, ["priority", "PRIORITY"]),
       paths: paths
@@ -2119,9 +2119,9 @@
         const latLngs = path.map((coordinate) => [coordinate[1], coordinate[0]]);
         const layer = L.polyline(latLngs, {
           color: recorderBlockColor(block.status),
-          weight: block.status === "Complete" ? 5 : 7,
-          opacity: block.status === "Complete" ? 0.55 : 0.85,
-          dashArray: block.status === "Complete" ? "6 6" : null
+          weight: isCompleteBlockStatus(block.status) ? 5 : 7,
+          opacity: isCompleteBlockStatus(block.status) ? 0.55 : 0.85,
+          dashArray: isCompleteBlockStatus(block.status) ? "6 6" : null
         }).addTo(recorderMap);
         layer.bindTooltip((block.blockName || block.blockId || "Sidewalk block") + " - " + block.status);
         layer.on("click", () => selectRecorderBlock(block));
@@ -2136,16 +2136,44 @@
   }
 
   function recorderBlockColor(status) {
+    status = normalizeBlockStatus(status);
     if (status === "Complete") return "#16a34a";
     if (status === "In Progress") return "#f59e0b";
     return "#6b7280";
   }
 
+  function normalizeBlockStatus(status) {
+    if (window.App && window.App.recorderBlocks && window.App.recorderBlocks.normalizeBlockStatus) {
+      return window.App.recorderBlocks.normalizeBlockStatus(status);
+    }
+
+    const value = String(status || "").trim().toLowerCase();
+    if (value === "complete" || value === "completed" || value === "done") return "Complete";
+    if (value === "in progress" || value === "inprogress" || value === "started") return "In Progress";
+    if (!value || value === "not started" || value === "notstarted" || value === "open") return "Not Started";
+    return String(status || "Not Started").trim();
+  }
+
+  function isCompleteBlockStatus(status) {
+    if (window.App && window.App.recorderBlocks && window.App.recorderBlocks.isCompleteStatus) {
+      return window.App.recorderBlocks.isCompleteStatus(status);
+    }
+
+    return normalizeBlockStatus(status) === "Complete";
+  }
+
+  function getRecorderSyncSentMessage() {
+    return window.App && window.App.recorderSync && window.App.recorderSync.sentForProcessingMessage
+      ? window.App.recorderSync.sentForProcessingMessage
+      : "Recording saved locally and sent to the backend for processing.";
+  }
+
   function selectRecorderBlock(block) {
+    block.status = normalizeBlockStatus(block.status);
     selectedRecorderBlock = block;
     field("recorderRouteName").value = block.blockName || block.blockId || "";
     updateSelectedBlockUi();
-    if (block.status === "Complete") {
+    if (isCompleteBlockStatus(block.status)) {
       setRecorderMessage("Selected block is already Complete. Choose another block to avoid duplicate surveys.", "error");
     } else {
       setRecorderMessage("Selected block: " + (block.blockName || block.blockId || "Unnamed block") + ".", "ok");
@@ -2171,7 +2199,7 @@
     label.textContent = selectedRecorderBlock.blockName || selectedRecorderBlock.blockId || "Unnamed block";
     status.textContent = selectedRecorderBlock.status || "Not Started";
     status.className = "block-status-pill" +
-      (selectedRecorderBlock.status === "Complete" ? " complete" : "") +
+      (isCompleteBlockStatus(selectedRecorderBlock.status) ? " complete" : "") +
       (selectedRecorderBlock.status === "In Progress" ? " in-progress" : "");
   }
 
@@ -2214,7 +2242,7 @@
     recorderState.condition = "Green";
     recorderState.startedAt = new Date().toISOString();
     recorderState.routeName = sanitizeTextInput(field("recorderRouteName").value);
-    if (selectedRecorderBlock && selectedRecorderBlock.status === "Complete") {
+    if (selectedRecorderBlock && isCompleteBlockStatus(selectedRecorderBlock.status)) {
       setRecorderMessage("This block is already marked Complete. Choose another block or clear the block selection before recording.", "error");
       recorderState = createEmptyRecorderState();
       updateRecorderUi();
@@ -2378,6 +2406,7 @@
     if (recorderState.points.length < 2) {
       recorderState.status = "idle";
       recorderState.endedAt = "";
+      clearActiveRecorderState();
       updateRecorderUi();
       setRecorderMessage("Recording stopped, but there were not enough GPS points to create a line segment.", "error");
       debugRecorder("Recorder stopped without enough points", { pointCount: recorderState.points.length });
@@ -3313,7 +3342,7 @@
         syncError: "",
         lastSyncAttemptAt: new Date().toISOString()
       });
-      setRecorderMessage("Recording saved locally and sent to the backend for ArcGIS sync.", "ok");
+      setRecorderMessage(getRecorderSyncSentMessage(), "ok");
       return true;
     } catch (error) {
       updateRecorderSession(session.routeId, {
