@@ -829,6 +829,16 @@
       font-size: 1.05rem;
     }
 
+    .block-picker-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 8px;
+    }
+
+    .block-picker-grid select {
+      min-height: 44px;
+    }
+
     .block-status-pill {
       display: inline-flex;
       align-items: center;
@@ -1654,7 +1664,7 @@
         <button class="secondary" type="button" id="backToIntroFromRecorder">Back</button>
       </div>
       <div class="recorder-body">
-        <div class="message" id="recorderMessage">Default condition is Green. Start recording, then tap Yellow or Red when the sidewalk condition changes.</div>
+        <div class="message" id="recorderMessage">Default condition is Green. Walk the block, tap Yellow or Red when conditions change, and confirm note/photo locations when prompted.</div>
 
         <div class="form-grid">
           <div>
@@ -1666,14 +1676,23 @@
             <input id="recorderEmail" type="email" autocomplete="email">
           </div>
           <div class="full">
-            <label for="recorderRouteName">Route / Block Name</label>
+            <label for="recorderRouteName">Street / Block Name</label>
             <input id="recorderRouteName" type="text" placeholder="Optional, for example Main St north side">
+            <p class="help">For public reports, this can be a street name or landmark. Staff can select an assigned block from the map when available.</p>
           </div>
         </div>
 
         <div class="recorder-block-panel">
           <strong>Assigned Block</strong>
-          <p class="help">Tap Load Blocks to show assigned/completed block lines on the map, then tap the block line you are about to inspect before starting the recorder.</p>
+          <p class="help">Optional staff workflow. Tap Load Blocks to show assigned/completed block lines, then tap the block line before starting. Public users can skip this.</p>
+          <div class="block-picker-grid">
+            <label for="blockSearchInput">Find Block From Inventory</label>
+            <input id="blockSearchInput" type="search" placeholder="Search by street, cross street, or block ID">
+            <select id="blockAssignmentSelect" aria-label="Block assignment options">
+              <option value="">Search to show matching blocks</option>
+            </select>
+            <button class="secondary" type="button" id="useSelectedBlockButton">Use Selected Block</button>
+          </div>
           <span id="selectedBlockLabel">No block selected</span>
           <span class="block-status-pill" id="selectedBlockStatus">--</span>
           <div class="recorder-control-grid">
@@ -1776,6 +1795,7 @@
   <script src="src/storage.js"></script>
   <script src="src/exportGeoJson.js"></script>
   <script src="src/sync.js"></script>
+  <script src="src/blockAssignments.js"></script>
   <script src="src/recorderBlocks.js"></script>
   <script src="src/recorderSync.js"></script>
   <script src="src/photo.js"></script>

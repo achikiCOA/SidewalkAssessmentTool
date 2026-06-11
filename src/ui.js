@@ -115,6 +115,7 @@
   let recorderStartFixActive = false;
   let recorderState = createEmptyRecorderState();
   let recorderLayers = [];
+  let recorderObservationLayers = [];
   let recorderBlockLayers = [];
   let recorderBlocks = [];
   let selectedRecorderBlock = null;
@@ -1013,6 +1014,8 @@
     field("loadBlocksButton").addEventListener("click", loadRecorderBlocks);
     field("clearSelectedBlockButton").addEventListener("click", clearSelectedRecorderBlock);
     field("zoomSelectedBlockButton").addEventListener("click", zoomSelectedRecorderBlock);
+    field("blockSearchInput").addEventListener("input", renderBlockAssignmentOptions);
+    field("useSelectedBlockButton").addEventListener("click", useSelectedBlockAssignment);
     document.querySelectorAll("[data-review-filter]").forEach((button) => {
       button.addEventListener("click", () => setRecorderReviewFilter(button.dataset.reviewFilter));
     });
@@ -1972,6 +1975,10 @@
       blockId: "",
       blockName: "",
       blockStatus: "",
+      blockStreetName: "",
+      blockFromStreet: "",
+      blockToStreet: "",
+      blockSideOfStreet: "",
       recorderName: "",
       email: "",
       points: [],
@@ -1995,6 +2002,7 @@
 
     initRecorderMap();
     restoreActiveRecorderState();
+    renderBlockAssignmentOptions();
     updateSelectedBlockUi();
     updateRecorderUi();
     renderRecorderReviewList();
@@ -2105,6 +2113,97 @@
     };
   }
 
+  function getBlockAssignments() {
+    return Array.isArray(window.App && window.App.blockAssignments) ? window.App.blockAssignments : [];
+  }
+
+  function renderBlockAssignmentOptions() {
+    const select = field("blockAssignmentSelect");
+    const search = sanitizeTextInput(field("blockSearchInput").value).toLowerCase();
+    const blocks = getBlockAssignments();
+    const matches = search
+      ? blocks.filter((block) => blockAssignmentSearchText(block).indexOf(search) !== -1).slice(0, 75)
+      : blocks.slice(0, 25);
+
+    select.replaceChildren();
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = blocks.length
+      ? search ? "Select a matching block" : "Type to narrow " + blocks.length + " inventory blocks"
+      : "No block inventory loaded";
+    select.appendChild(placeholder);
+
+    matches.forEach((block) => {
+      const option = document.createElement("option");
+      option.value = block.blockId;
+      option.textContent = formatBlockAssignmentOption(block);
+      select.appendChild(option);
+    });
+  }
+
+  function blockAssignmentSearchText(block) {
+    return [
+      block.blockId,
+      block.blockName,
+      block.streetName,
+      block.fromStreet,
+      block.toStreet,
+      block.sideOfStreet,
+      block.status,
+      block.priority
+    ].join(" ").toLowerCase();
+  }
+
+  function formatBlockAssignmentOption(block) {
+    const crossStreet = block.fromStreet && block.toStreet
+      ? block.fromStreet + " to " + block.toStreet
+      : block.fromStreet || block.toStreet || "cross streets need verification";
+    const side = block.sideOfStreet && block.sideOfStreet !== "Needs Verification" ? " - " + block.sideOfStreet : "";
+    return block.streetName + " - " + crossStreet + side + " (" + block.status + ", ID " + block.blockId + ")";
+  }
+
+  function useSelectedBlockAssignment() {
+    const blockId = field("blockAssignmentSelect").value;
+    if (!blockId) {
+      setRecorderMessage("Search for a block and choose one from the list first.", "error");
+      return;
+    }
+
+    const block = getBlockAssignments().find((item) => String(item.blockId) === String(blockId));
+    if (!block) {
+      setRecorderMessage("Selected block could not be found in the inventory list.", "error");
+      return;
+    }
+
+    selectRecorderBlock({
+      blockId: block.blockId,
+      blockName: block.blockName,
+      streetName: block.streetName,
+      fromStreet: block.fromStreet,
+      toStreet: block.toStreet,
+      sideOfStreet: block.sideOfStreet,
+      status: block.status,
+      assignedTo: block.assignedTo,
+      priority: block.priority,
+      paths: []
+    });
+  }
+
+  function selectedRecorderBlockLabel(block) {
+    if (!block) return "No block selected";
+
+    const name = block.blockName || block.streetName || block.blockId || "Unnamed block";
+    if (block.blockName && block.blockName.indexOf(" - ") !== -1) return name;
+
+    const crossStreet = block.fromStreet && block.toStreet
+      ? block.fromStreet + " to " + block.toStreet
+      : block.fromStreet || block.toStreet || "";
+    const side = block.sideOfStreet && block.sideOfStreet !== "Needs Verification" ? block.sideOfStreet : "";
+    const details = [crossStreet, side].filter(Boolean);
+
+    return details.length ? name + " - " + details.join(" - ") : name;
+  }
+
   function textFromAttributes(attributes, names) {
     for (const name of names) {
       if (attributes[name] !== undefined && attributes[name] !== null) return String(attributes[name]);
@@ -2196,7 +2295,7 @@
       return;
     }
 
-    label.textContent = selectedRecorderBlock.blockName || selectedRecorderBlock.blockId || "Unnamed block";
+    label.textContent = selectedRecorderBlockLabel(selectedRecorderBlock);
     status.textContent = selectedRecorderBlock.status || "Not Started";
     status.className = "block-status-pill" +
       (isCompleteBlockStatus(selectedRecorderBlock.status) ? " complete" : "") +
@@ -2236,6 +2335,7 @@
     stopRecorderWatch();
     stopRecorderStartWatch();
     clearRecorderMapLayers();
+    clearRecorderObservationLayers();
     recorderState = createEmptyRecorderState();
     recorderState.sessionId = makeId("REC");
     recorderState.status = "recording";
@@ -2251,6 +2351,10 @@
     recorderState.blockId = selectedRecorderBlock ? selectedRecorderBlock.blockId : "";
     recorderState.blockName = selectedRecorderBlock ? selectedRecorderBlock.blockName : "";
     recorderState.blockStatus = selectedRecorderBlock ? selectedRecorderBlock.status : "";
+    recorderState.blockStreetName = selectedRecorderBlock ? selectedRecorderBlock.streetName || "" : "";
+    recorderState.blockFromStreet = selectedRecorderBlock ? selectedRecorderBlock.fromStreet || "" : "";
+    recorderState.blockToStreet = selectedRecorderBlock ? selectedRecorderBlock.toStreet || "" : "";
+    recorderState.blockSideOfStreet = selectedRecorderBlock ? selectedRecorderBlock.sideOfStreet || "" : "";
     recorderState.recorderName = sanitizeTextInput(field("recorderName").value);
     recorderState.email = sanitizeTextInput(field("recorderEmail").value);
     recorderState.lastAccuracy = recorderStartPoint ? recorderStartPoint.accuracyMeters : null;
@@ -2635,6 +2739,10 @@
 
     setRecorderMessage("Locking note location...", "");
     const location = await getRecorderObservationLocation("note");
+    if (!confirmRecorderObservationLocation("note", location)) {
+      setRecorderMessage("Note was not saved. Try again when GPS is steadier, or use Point Inspection to place the issue manually.", "error");
+      return;
+    }
     recorderState.notes.push({
       noteId: makeId("RNT"),
       timestamp: new Date().toISOString(),
@@ -2643,10 +2751,13 @@
       latitude: location.point ? location.point.latitude : "",
       longitude: location.point ? location.point.longitude : "",
       accuracyMeters: location.point ? location.point.accuracyMeters : "",
-      locationSource: location.source
+      locationSource: location.source,
+      locationWarning: Boolean(location.warning),
+      locationMessage: location.message || ""
     });
     setRecorderMessage("Recorder note added" + locationMessageSuffix(location) + ".", location.warning ? "error" : "ok");
     saveActiveRecorderState();
+    renderRecorderObservations();
     updateRecorderUi();
   }
 
@@ -2662,6 +2773,11 @@
 
     setRecorderMessage("Locking photo location...", "");
     const location = await getRecorderObservationLocation("photo");
+    if (!confirmRecorderObservationLocation(files.length === 1 ? "photo" : "photos", location)) {
+      field("recorderPhoto").value = "";
+      setRecorderMessage("Photo was not saved. Try again when GPS is steadier, or use Point Inspection to place the issue manually.", "error");
+      return;
+    }
     files.forEach((file) => {
       recorderState.photos.push({
         photoId: makeId("RPH"),
@@ -2673,13 +2789,26 @@
         latitude: location.point ? location.point.latitude : "",
         longitude: location.point ? location.point.longitude : "",
         accuracyMeters: location.point ? location.point.accuracyMeters : "",
-        locationSource: location.source
+        locationSource: location.source,
+        locationWarning: Boolean(location.warning),
+        locationMessage: location.message || ""
       });
     });
     field("recorderPhoto").value = "";
     setRecorderMessage(files.length + " recorder photo" + (files.length === 1 ? "" : "s") + " attached locally" + locationMessageSuffix(location) + ".", location.warning ? "error" : "ok");
     saveActiveRecorderState();
+    renderRecorderObservations();
     updateRecorderUi();
+  }
+
+  function confirmRecorderObservationLocation(label, location) {
+    if (location && location.point && !location.warning) return true;
+
+    const message = location && location.point
+      ? "The app could not get a fresh accurate GPS fix for this " + label + ". It can use the last recorded location instead, but that may not be exactly at the issue. Save it anyway?"
+      : "The app could not get a usable GPS location for this " + label + ". Save it without a location?";
+
+    return window.confirm(message);
   }
 
   function getLastRecorderObservationPoint() {
@@ -2951,6 +3080,38 @@
     });
   }
 
+  function renderRecorderObservations() {
+    if (!recorderMap) return;
+    clearRecorderObservationLayers();
+
+    recorderState.notes.forEach((note) => {
+      addRecorderObservationMarker(note, "note");
+    });
+    recorderState.photos.forEach((photo) => {
+      addRecorderObservationMarker(photo, "photo");
+    });
+  }
+
+  function addRecorderObservationMarker(observation, type) {
+    const lat = Number(observation.latitude);
+    const lng = Number(observation.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    const isWarning = Boolean(observation.locationWarning) || String(observation.locationSource || "") !== "fresh_gps_fix";
+    const marker = L.circleMarker([lat, lng], {
+      radius: type === "photo" ? 7 : 6,
+      color: isWarning ? "#b45309" : "#1d4ed8",
+      fillColor: type === "photo" ? "#38bdf8" : "#bfdbfe",
+      fillOpacity: 0.9,
+      weight: 3
+    }).addTo(recorderMap);
+
+    const label = type === "photo" ? "Photo" : "Note";
+    const accuracy = observation.accuracyMeters ? " - " + observation.accuracyMeters + " m" : "";
+    marker.bindTooltip(label + accuracy);
+    recorderObservationLayers.push(marker);
+  }
+
   function renderRecorderPaths() {
     renderSegments();
   }
@@ -2958,6 +3119,11 @@
   function clearRecorderMapLayers() {
     recorderLayers.forEach((item) => item.layer.remove());
     recorderLayers = [];
+  }
+
+  function clearRecorderObservationLayers() {
+    recorderObservationLayers.forEach((layer) => layer.remove());
+    recorderObservationLayers = [];
   }
 
   function renderRecorderReviewList() {
@@ -3198,6 +3364,10 @@
       blockId: state.blockId || "",
       blockName: state.blockName || "",
       blockStatus: state.blockStatus || "",
+      blockStreetName: state.blockStreetName || "",
+      blockFromStreet: state.blockFromStreet || "",
+      blockToStreet: state.blockToStreet || "",
+      blockSideOfStreet: state.blockSideOfStreet || "",
       inspectorName: state.recorderName || "",
       recorderName: state.recorderName || "",
       email: state.email || "",
@@ -3249,10 +3419,18 @@
     recorderState.blockId = saved.blockId || "";
     recorderState.blockName = saved.blockName || "";
     recorderState.blockStatus = saved.blockStatus || "";
+    recorderState.blockStreetName = saved.blockStreetName || "";
+    recorderState.blockFromStreet = saved.blockFromStreet || "";
+    recorderState.blockToStreet = saved.blockToStreet || "";
+    recorderState.blockSideOfStreet = saved.blockSideOfStreet || "";
     selectedRecorderBlock = recorderState.blockId ? {
       blockId: recorderState.blockId,
       blockName: recorderState.blockName,
-      status: recorderState.blockStatus
+      status: recorderState.blockStatus,
+      streetName: recorderState.blockStreetName,
+      fromStreet: recorderState.blockFromStreet,
+      toStreet: recorderState.blockToStreet,
+      sideOfStreet: recorderState.blockSideOfStreet
     } : null;
     recorderState.recorderName = saved.inspectorName || saved.recorderName || "";
     recorderState.email = saved.email || "";
@@ -3268,6 +3446,7 @@
     updateSelectedBlockUi();
     setRecorderCondition(recorderState.condition);
     renderSegments();
+    renderRecorderObservations();
     renderRecorderReviewList();
     setRecorderMessage("Recovered an interrupted recording. It is paused so you can resume or stop and save it.", "ok");
     return true;
@@ -3364,6 +3543,10 @@
       blockId: session.blockId || "",
       blockName: session.blockName || "",
       blockStatus: session.blockStatus || "",
+      blockStreetName: session.blockStreetName || "",
+      blockFromStreet: session.blockFromStreet || "",
+      blockToStreet: session.blockToStreet || "",
+      blockSideOfStreet: session.blockSideOfStreet || "",
       inspectorName: session.inspectorName || session.recorderName || "",
       startedAt: session.startedAt || "",
       endedAt: session.endedAt || "",
@@ -3379,7 +3562,9 @@
         latitude: photo.latitude || "",
         longitude: photo.longitude || "",
         accuracyMeters: photo.accuracyMeters || "",
-        locationSource: photo.locationSource || ""
+        locationSource: photo.locationSource || "",
+        locationWarning: Boolean(photo.locationWarning),
+        locationMessage: photo.locationMessage || ""
       })) : []
     };
   }
@@ -3447,6 +3632,10 @@
       blockId: session.blockId || "",
       blockName: session.blockName || "",
       blockStatus: session.blockStatus || "",
+      blockStreetName: session.blockStreetName || "",
+      blockFromStreet: session.blockFromStreet || "",
+      blockToStreet: session.blockToStreet || "",
+      blockSideOfStreet: session.blockSideOfStreet || "",
       inspectorName: inspectorName,
       recorderName: inspectorName,
       email: session.email || "",
