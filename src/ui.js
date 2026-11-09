@@ -1217,7 +1217,7 @@
       populateReview(report);
 
       if (!validation.ok) {
-        setReviewNotice(validation.message + " Use the Edit button below to fix it.", "error");
+        showValidationHelp(validation);
         openSurveyStep("reviewSection");
         return;
       }
@@ -1280,6 +1280,35 @@
     const notice = field("reviewNotice");
     notice.textContent = text;
     notice.className = "message" + (type ? " " + type : "");
+  }
+
+  function showValidationHelp(validation) {
+    setReviewNotice(validation.message, "error");
+    const targets = {
+      locationSection: ["Go to Location", "confirmLocationButton"],
+      photoSection: ["Go to Photos", "photo"],
+      conditionSection: ["Go to Condition", null],
+      measurementsSection: ["Go to Measurements", null]
+    };
+    const target = targets[validation.sectionId];
+    if (!target) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = target[0];
+    button.style.marginTop = "12px";
+    button.addEventListener("click", () => {
+      openSurveyStep(validation.sectionId);
+      if (validation.sectionId === "locationSection") {
+        setMessage("Move the map so the center target is on the issue, then tap Confirm Point. For a segment, set both endpoints.", "error");
+      }
+      const control = target[1] && field(target[1]);
+      if (control && control.getClientRects().length) {
+        control.focus({ preventScroll: true });
+        control.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+    field("reviewNotice").appendChild(button);
+    field("reviewNotice").setAttribute("role", "alert");
   }
 
   function getCurrentReportSnapshot() {
@@ -1370,7 +1399,7 @@
 
       if (!validation.ok) {
         populateReview(report);
-        setReviewNotice(validation.message + " Use the Edit button below to fix it.", "error");
+        showValidationHelp(validation);
         setMessage(validation.message, "error");
         openSurveyStep("reviewSection");
         return;
@@ -1436,7 +1465,7 @@
     }
 
     if (!locationConfirmed) {
-      return { ok: false, sectionId: "locationSection", message: "Confirm the marker location before submitting." };
+      return { ok: false, sectionId: "locationSection", message: "Your location needs confirmation. Go to Location, place the map target on the issue, and tap Confirm Point (or set both endpoints for a segment)." };
     }
 
     if (!getSelectedConditions().length) {
