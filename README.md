@@ -103,6 +103,10 @@ Point Inspection mode is the existing detailed inspection workflow. It supports 
 
 Use [samples/sidewalk-segments-example.geojson](samples/sidewalk-segments-example.geojson) to test ArcGIS Online GeoJSON import without collecting a route in the field.
 
+## ArcGIS Sidewalk Solution
+
+Use [docs/arcgis-sidewalk-solution-integration.md](docs/arcgis-sidewalk-solution-integration.md) when connecting this app to the deployed ArcGIS Sidewalk Solution, corporation limit layer, sidewalk inventory, dashboards, and field maps.
+
 ## QA
 
 Use [docs/manual-qa-checklist.md](docs/manual-qa-checklist.md) before public deployment or after changes to maps, GPS, recorder logic, photo handling, upload, or export.

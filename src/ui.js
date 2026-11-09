@@ -2,7 +2,7 @@
   "use strict";
 
   const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
-  const DEFAULT_UPLOAD_URL = "";
+  const DEFAULT_UPLOAD_URL = window.App.config.defaultUploadUrl || "";
   const APP_VERSION = "2026-06-10-recorder-sync-cleanup-v1";
   const STORAGE_KEY = "sidewalkAssessmentReports";
   const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
@@ -102,6 +102,7 @@
   let draftTimer = null;
   let draftAutosaveEnabled = true;
   let lastSubmittedReport = null;
+  let pendingReportId = null;
   let segmentStart = null;
   let segmentEnd = null;
   let segmentLine = null;
@@ -1397,7 +1398,14 @@
         setMessage("Report saved in this browser. Add the Google Apps Script or Power Automate URL to upload to a spreadsheet.", "ok");
       }
 
-      showSuccess(report);
+      showSuccess(report, uploaded);
+      if (!uploaded) {
+        openSurveyStep("reviewSection");
+        field("successPanel").style.display = "none";
+        field("surveyForm").style.display = "block";
+        setReviewNotice("Saved report details locally. Photos remain in this form only. Keep this page open and resolve the upload connection before leaving.", "error");
+        return;
+      }
       clearDraft();
       resetFormAfterSubmit();
       setLocation(Number(report.latitude), Number(report.longitude), false, report.locationAccuracy || null);
@@ -1440,7 +1448,7 @@
     }
 
     if (severity >= 3 && !report.photoName) {
-      return { ok: false, sectionId: "photoSection", message: "Add a photo for poor or missing sidewalk reports." };
+      return { ok: false, sectionId: "photoSection", message: "Add a photo for severe or missing sidewalk reports." };
     }
 
     if (conditionIncludes("Obstruction") && report.obstructionType === "None") {
@@ -1450,13 +1458,14 @@
     return { ok: true };
   }
 
-  function showSuccess(report) {
+  function showSuccess(report, uploaded) {
     lastSubmittedReport = report;
     field("successReportId").textContent = report.reportId;
     field("successReportType").textContent = report.reportType;
     field("successPriority").textContent = report.priorityClass + " (" + report.priorityScore + ")";
     field("successScore").textContent = report.score + " / 100 - " + report.conditionClass;
-    field("successPhotos").textContent = report.photoCount + " photo" + (report.photoCount === 1 ? "" : "s") + " uploaded";
+    field("successPanel").querySelector("h3").textContent = uploaded === "sent" ? "Report Sent - Receipt Unconfirmed" : uploaded ? "Report Uploaded" : "Report Saved Locally";
+    field("successPhotos").textContent = report.photoCount + " photo" + (report.photoCount === 1 ? "" : "s") + (uploaded === "sent" ? " sent; receipt unconfirmed" : uploaded ? " uploaded" : " selected; not uploaded");
     field("successLocation").textContent = report.reportType === "Sidewalk Segment"
       ? "Segment length about " + (report.segmentLengthFt || "--") + " ft"
       : report.latitude + ", " + report.longitude;
@@ -1466,6 +1475,7 @@
   }
 
   function resetFormAfterSubmit() {
+    pendingReportId = null;
     draftAutosaveEnabled = false;
     const contact = getSavedContactInfo();
     field("surveyForm").reset();
@@ -1622,7 +1632,7 @@
     }));
 
     return {
-      reportId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      reportId: pendingReportId || (pendingReportId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
       submittedAt: new Date().toISOString(),
       website: field("website").value.trim(),
       reporterName: field("reporterName").value.trim(),
@@ -1812,17 +1822,7 @@
         throw new Error("Spreadsheet upload failed.");
       }
     } catch (error) {
-      debugLog("Primary sync request failed; trying no-cors fallback.", error);
-      try {
-        await fetch(uploadUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(report)
-        });
-      } catch (fallbackError) {
-        throw new Error("Sync failed. " + getErrorMessage(fallbackError));
-      }
+      throw new Error("Sync failed. " + getErrorMessage(error));
     }
 
     return true;
@@ -1881,7 +1881,9 @@
 
   function getReports() {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      const reports = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      if (!Array.isArray(reports)) throw new Error("Saved report data must be a list.");
+      return reports.filter((report) => report && typeof report === "object" && !Array.isArray(report));
     } catch (error) {
       handleAppError("Saved reports could not be read.", error, setMessage);
       return [];
@@ -1893,15 +1895,17 @@
     const localReport = Object.assign({}, report, {
       photoData: "",
       photoDataList: [],
-      photoDataStored: Boolean(report.photoCount)
+      photoDataStored: false
     });
 
     try {
-      reports.push(localReport);
+      const existingIndex = reports.findIndex((saved) => saved.reportId === report.reportId);
+      if (existingIndex >= 0) reports[existingIndex] = localReport;
+      else reports.push(localReport);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
       warnIfLocalStorageLarge(setMessage);
     } catch (error) {
-      handleAppError("Local report backup was skipped.", error, setMessage);
+      throw new Error("Report could not be saved in this browser. Free storage space before submitting. " + getErrorMessage(error));
     }
   }
 

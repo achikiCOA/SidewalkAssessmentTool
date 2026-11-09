@@ -10,6 +10,7 @@
    */
   App.config = Object.freeze({
     defaultLocation: { lat: 39.3292, lng: -82.1013 },
+    defaultUploadUrl: "https://script.google.com/macros/s/AKfycbwdSaR-1GxmXO1i1k2WIWATA-SCXDa5fm3PgEC_8IAvhJG8-Y-S-EZgCXheEoganjLj6A/exec",
     uploadUrlKey: "sidewalkAssessmentUploadUrl",
     blockLayerUrlKey: "sidewalkAssessmentBlockLayerUrl",
     storageKeys: Object.freeze({
