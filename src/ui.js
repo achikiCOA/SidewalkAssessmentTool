@@ -3,7 +3,7 @@
 
   const DEFAULT_LOCATION = { lat: 39.3292, lng: -82.1013 };
   const DEFAULT_UPLOAD_URL = window.App.config.defaultUploadUrl || "";
-  const APP_VERSION = "2026-06-10-recorder-sync-cleanup-v1";
+  const APP_VERSION = "2026-11-09-validation-navigation-v1";
   const STORAGE_KEY = "sidewalkAssessmentReports";
   const RECORDER_STORAGE_KEY = "sidewalkRecorderSessions";
   const RECORDER_ACTIVE_STORAGE_KEY = "sidewalkRecorderActiveSession";

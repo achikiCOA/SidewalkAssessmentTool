@@ -2,9 +2,9 @@
 
 Open the assessment tool: https://achikicoa.github.io/SidewalkAssessmentTool/
 
-Use **Point Inspection** to document one specific sidewalk problem at a time, such as a raised slab, crack, gap, obstruction, or curb ramp issue. For this test, do not use Recorder Mode or Sidewalk Segment.
+Use **Point Inspection** to document one specific sidewalk problem at a time, such as a raised slab, crack, gap, obstruction, or curb ramp issue. For this test, do not use Recorder Mode.
 
-**Field test warning:** Use Point Inspection with Point Issue selected. Do not use Recorder Mode or Sidewalk Segment (the linear assessment options). Their recorded paths and locations are not reliable enough for this assessment yet. Report each problem as a separate point, confirm its location on the map, and include nearby landmarks in your comments.
+**Field test: Point Issue reports are preferred.** Recorder Mode is disabled in the app during this test because its walking GPS path is not reliable enough. For the cleanest test, select Point Issue and record each problem as a separate point. Confirm its location on the map and include nearby landmarks in your comments. Sidewalk Segment remains available for a long continuous problem when your instructor specifically asks you to use it.
 
 ## Before You Start
 
@@ -15,9 +15,9 @@ Use **Point Inspection** to document one specific sidewalk problem at a time, su
 
 ## Submit a Report
 
-1. **Choose the location.** Select **Point Inspection** and keep **Report Type** set to **Point Issue**. Tap **Use My Location**. Check the map against your surroundings. Move the map so the center target is over the actual issue, then tap **Confirm Point**. Tap **Next: Photos**.
+1. **Choose the location.** Select **Point Inspection** and keep **Report Type** set to **Point Issue** unless your instructor directs you to report a long continuous stretch. Tap **Use My Location**. Check the map against your surroundings. Move the map so the center target is over the actual issue, then tap **Confirm Point**. Tap **Next: Photos**.
 2. **Take photos.** Take a close photo showing the defect and a wider photo showing where it is. Include a ruler in the close photo when useful. Check the previews, then tap **Next: Condition**. Avoid including identifiable people or vehicle plates where practical.
-3. **Describe the condition.** Choose all issue types that apply at this spot. A quick preset can help, but check its selections. Do not choose **Long Bad Section** during this test. Choose severity using the definitions below. Tap **Next: Context**.
+3. **Describe the condition.** Choose all issue types that apply at this spot. A quick preset can help, but check its selections. For a long continuous problem, use **Long Bad Section** only if your instructor requests a Sidewalk Segment report. Choose severity using the definitions below. Tap **Next: Context**.
 4. **Add context and comments.** Select pedestrian volume and school/bus-stop proximity. Choose **Unknown** for proximity if unsure. In comments, describe the street side, nearest address or landmark, and the problem. Example: “North side of Main Street, beside the library entrance; raised edge between two slabs.” Tap **Next: Measurements**.
 5. **Enter measurements you actually took.** Relevant measurement fields appear based on the issue type. Vertical displacement and gap width use inches; passable width uses feet; slopes use percent. For reference, .25 inch is 1/4 inch, .5 inch is 1/2 inch, and .75 inch is 3/4 inch. Leave unmeasured fields blank or set to **Not measured**. Do not enter zero to mean unknown. Tap **Skip/Next: Contact**.
 6. **Enter your contact information.** Use the name and email your instructor asks you to use. Check any information filled in from an earlier report. Tap **Review Report**.

@@ -540,6 +540,16 @@
       background: var(--accent);
     }
 
+    .segment-button:disabled,
+    .type-card.disabled,
+    .mode-card-button:disabled {
+      color: #667085;
+      background: #e5e7eb;
+      border-color: #cbd0d8;
+      cursor: not-allowed;
+      opacity: 0.75;
+    }
+
     .enhanced-select {
       position: absolute;
       width: 1px;
@@ -1192,11 +1202,12 @@
         Point Inspection
         <span>Use the existing form for one issue or one manually defined sidewalk segment.</span>
       </button>
-      <button class="mode-card-button" type="button" id="startRecorderButton">
+      <button class="mode-card-button" type="button" id="startRecorderButton" disabled aria-describedby="recorderPilotNotice">
         Recorder Mode
-        <span>Walk the sidewalk and tap Green, Yellow, or Red while GPS records line segments.</span>
+        <span>Unavailable during this student test.</span>
       </button>
     </div>
+    <p class="help" id="recorderPilotNotice">Please use Point Inspection and select Point Issue. Recorder Mode is disabled while its GPS path accuracy is being improved.</p>
   </section>
 
   <main class="app-shell" id="appShell">
@@ -1535,6 +1546,7 @@
               </div>
             </div>
           </div>
+          <p class="help" id="pointOnlyNotice"><strong>Student field test:</strong> Use Point Issue for each specific problem. Recorder Mode is temporarily unavailable because its GPS path is not reliable enough.</p>
           <p class="help" id="locationHelp">Point issue: place the target on the exact spot and confirm point.</p>
           <div class="button-row location-actions" id="pointLocationActions">
             <button class="secondary" type="button" id="locateButton">Use My Location</button>
